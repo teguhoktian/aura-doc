@@ -27,6 +27,22 @@ class LoanResource extends Resource
                 Forms\Components\Section::make('Data Debitur')
                     ->description('Informasi utama fasilitas kredit')
                     ->schema([
+                        Forms\Components\Select::make('loan_type_id')
+                            ->label('Jenis Kredit (Loan Type)')
+                            ->relationship('loan_type', 'description')
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            // Menggabungkan informasi agar user mudah memilih
+                            ->getOptionLabelFromRecordUsing(fn($record) => "{$record->code} - {$record->description} ({$record->division})")
+                            // Memastikan pencarian juga bisa dilakukan berdasarkan kode atau divisi
+                            ->getSearchResultsUsing(
+                                fn(string $search) => \App\Models\LoanType::where('description', 'like', "%{$search}%")
+                                    ->orWhere('code', 'like', "%{$search}%")
+                                    ->orWhere('division', 'like', "%{$search}%")
+                                    ->limit(50)
+                                    ->pluck('description', 'id')
+                            ),
                         Forms\Components\TextInput::make('loan_number')
                             ->label('Nomor Kontrak')
                             ->required()
@@ -71,7 +87,14 @@ class LoanResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->copyable(), // Memudahkan copy-paste nomor kontrak
+                Tables\Columns\TextColumn::make('loan_type.code')
+                    ->label('Kode')
+                    ->sortable(),
 
+                Tables\Columns\TextColumn::make('loan_type.description')
+                    ->label('Jenis Kredit')
+                    ->description(fn(Loan $record): string => $record->loan_type->division ?? '')
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('debtor_name')
                     ->label('Nama Nasabah')
                     ->searchable(),
@@ -94,6 +117,8 @@ class LoanResource extends Resource
                         'closed' => 'gray',
                         'liquidated' => 'danger',
                     }),
+
+
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')

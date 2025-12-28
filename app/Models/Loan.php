@@ -18,6 +18,8 @@ class Loan extends Model
         'status'
     ];
 
+    protected $with = ['loan_type'];
+
     // Menangani format tanggal agar bisa dibaca Filament
     protected $casts = [
         'disbursement_date' => 'date',
@@ -27,5 +29,10 @@ class Loan extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class);
+    }
+
+    public function loan_type()
+    {
+        return $this->belongsTo(LoanType::class);
     }
 }

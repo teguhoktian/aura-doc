@@ -21,6 +21,8 @@ class DocumentsRelationManager extends RelationManager
                 Forms\Components\TextInput::make('document_number')
                     ->required()
                     ->maxLength(255),
+
+
             ]);
     }
 
@@ -30,20 +32,29 @@ class DocumentsRelationManager extends RelationManager
             ->recordTitleAttribute('document_number')
             ->columns([
                 Tables\Columns\TextColumn::make('document_number'),
+                Tables\Columns\TextColumn::make('document_type')
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'PK' => 'info',
+                        'SHM', 'SHT' => 'success',
+                        default => 'gray',
+                    }),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge(),
             ])
             ->filters([
                 //
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make(),
+                // Tables\Actions\CreateAction::make(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                // Tables\Actions\EditAction::make(),
+                // Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    // Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

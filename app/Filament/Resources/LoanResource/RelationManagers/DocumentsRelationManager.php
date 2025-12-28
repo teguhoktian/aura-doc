@@ -31,8 +31,9 @@ class DocumentsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('document_number')
             ->columns([
-                Tables\Columns\TextColumn::make('document_number'),
-                Tables\Columns\TextColumn::make('document_type')
+                Tables\Columns\TextColumn::make('document_number')->label('Nomor Dokumen'),
+                Tables\Columns\TextColumn::make('document_type.name')
+                    ->label('Jenis Dokumen')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
                         'PK' => 'info',

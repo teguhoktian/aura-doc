@@ -30,22 +30,17 @@ class DocumentTypeResource extends Resource
                         ->unique(ignoreRecord: true)
                         ->placeholder('Contoh: SK CPNS atau Sertifikat SHM'),
 
-                    Forms\Components\Select::make('category')
+                    // Di dalam form() DocumentTypeResource
+                    Forms\Components\Select::make('category_id')
                         ->label('Kategori')
-                        ->options([
-                            'Legalitas' => 'Dokumen Legalitas',
-                            'Agunan' => 'Dokumen Agunan',
-                            'Kepegawaian ASN' => 'Dokumen Kepegawaian ASN',
-                            'Pengikatan' => 'Dokumen Pengikatan',
-                        ])
-                        ->required()
-                        // Mengganti creatable() yang error dengan logic yang benar
+                        ->relationship('category', 'name') // Pastikan relasi 'category' ada di model DocumentType
+                        ->searchable()
+                        ->preload()
                         ->createOptionForm([
-                            Forms\Components\TextInput::make('category')
-                                ->label('Nama Kategori Baru')
+                            Forms\Components\TextInput::make('name')
                                 ->required(),
                         ])
-                        ->createOptionUsing(fn(array $data): string => $data['category']),
+                        ->required(),
 
                     Forms\Components\Toggle::make('has_expiry')
                         ->label('Memiliki Masa Berlaku?')
@@ -69,7 +64,7 @@ class DocumentTypeResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('category')
+                Tables\Columns\TextColumn::make('category.name')
                     ->label('Kategori')
                     ->badge()
                     ->color('info')

@@ -21,4 +21,9 @@ class DocumentType extends Model
     {
         return $this->hasMany(Document::class);
     }
+
+    public function category()
+    {
+        return $this->belongsTo(DocumentCategory::class, 'category_id');
+    }
 }

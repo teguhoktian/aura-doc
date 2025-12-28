@@ -37,20 +37,34 @@ class DocumentResource extends Resource
 
                 Forms\Components\Section::make('Informasi Dokumen')
                     ->schema([
-                        Forms\Components\Select::make('document_type')
-                            ->options([
-                                'PK' => 'Perjanjian Kredit',
-                                'APHT' => 'APHT',
-                                'SHT' => 'SHT (Elektronik)',
-                                'SHM' => 'Sertifikat Hak Milik',
-                                'PPJB' => 'PPJB',
-                            ])
+                        Forms\Components\Select::make('document_type_id')
+                            ->label('Jenis Dokumen')
+                            ->relationship('document_type', 'name')
+                            ->searchable()
+                            ->preload()
                             ->required()
-                            ->native(false),
+                            ->live() // Membuat form merespon perubahan secara real-time
+                            ->afterStateUpdated(fn($state, callable $set) => $set('expiry_date', null)),
+
                         Forms\Components\TextInput::make('document_number')
-                            ->label('Nomor Dokumen/Sertifikat')
-                            ->required()
-                            ->unique(ignoreRecord: true),
+                            ->label('Nomor Dokumen')
+                            ->required(),
+
+                        // Field ini muncul secara dinamis
+                        Forms\Components\DatePicker::make('expiry_date')
+                            ->label('Tanggal Kadaluarsa')
+                            ->placeholder('Pilih tanggal jika ada')
+                            ->required(
+                                fn($get): bool =>
+                                // Wajib diisi jika tipe dokumen terpilih memiliki has_expiry = true
+                                \App\Models\DocumentType::find($get('document_type_id'))?->has_expiry ?? false
+                            )
+                            ->visible(
+                                fn($get): bool =>
+                                // Hanya muncul jika has_expiry = true
+                                \App\Models\DocumentType::find($get('document_type_id'))?->has_expiry ?? false
+                            )
+                            ->native(false),
                     ])->columns(2),
 
                 Forms\Components\Section::make('Soft Copy (PDF)')
@@ -96,17 +110,29 @@ class DocumentResource extends Resource
                     ->label('No. Kredit')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('document_type')
-                    ->badge()
-                    ->color(fn(string $state): string => match ($state) {
-                        'PK' => 'info',
-                        'SHM', 'SHT' => 'success',
-                        default => 'gray',
-                    }),
+                Tables\Columns\TextColumn::make('document_type.name')
+                    ->label('Jenis Dokumen')
+                    ->badge(),
                 Tables\Columns\TextColumn::make('document_number')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('expiry_date')
+                    ->label('Masa Berlaku')
+                    ->date('d/m/Y')
+                    ->sortable()
+                    // Senior Touch: Warnai merah jika sudah lewat tanggal sekarang
+                    ->color(
+                        fn($state): string => ($state && \Carbon\Carbon::parse($state)->isPast()) ? 'danger' : 'gray'
+                    )
+                    ->icon(
+                        fn($state): ?string => ($state && \Carbon\Carbon::parse($state)->isPast()) ? 'heroicon-m-exclamation-circle' : null
+                    ),
                 Tables\Columns\TextColumn::make('status')
-                    ->badge(),
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'in_vault' => 'success',
+                        'borrowed' => 'warning',
+                        'released' => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -140,12 +166,15 @@ class DocumentResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('document_type')
-                    ->options([
-                        'PK' => 'Perjanjian Kredit',
-                        'APHT' => 'APHT',
-                        'SHT' => 'SHT',
-                    ]),
+                // Filter dokumen yang sudah kadaluarsa
+                Tables\Filters\Filter::make('expired')
+                    ->label('Sudah Kadaluarsa')
+                    ->query(fn(Builder $query) => $query->where('expiry_date', '<', now())),
+
+                // Filter dokumen wajib
+                Tables\Filters\Filter::make('is_mandatory')
+                    ->label('Dokumen Wajib')
+                    ->query(fn(Builder $query) => $query->whereHas('document_type', fn($q) => $q->where('is_mandatory', true))),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

@@ -15,10 +15,12 @@ class Document extends Model implements HasMedia
 
     protected $fillable = [
         'loan_id',
-        'document_type',
+        'document_type_id', // Pastikan ini ada
         'document_number',
-        'legal_metadata',
         'status',
+        'storage_id',
+        'legal_metadata',
+        'expiry_date', // Tambahkan ini jika di step sebelumnya belum ada
     ];
 
     // Cast JSON agar otomatis menjadi array di Laravel
@@ -51,5 +53,10 @@ class Document extends Model implements HasMedia
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    public function document_type(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(DocumentType::class);
     }
 }

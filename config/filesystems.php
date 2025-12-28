@@ -30,18 +30,34 @@ return [
 
     'disks' => [
 
+        // 'local' => [
+        //     'driver' => 'local',
+        //     'root' => storage_path('app/private'),
+        //     'serve' => true,
+        //     'throw' => false,
+        //     'report' => false,
+        // ],
+
         'local' => [
             'driver' => 'local',
-            'root' => storage_path('app/private'),
+            'root' => storage_path('app'), // Kembalikan ke default
             'serve' => true,
             'throw' => false,
             'report' => false,
         ],
 
+        // Tambahkan ini secara spesifik agar dikenali oleh Spatie
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private'),
+            'visibility' => 'private',
+            'throw' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            'url' => env('APP_URL') . '/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,

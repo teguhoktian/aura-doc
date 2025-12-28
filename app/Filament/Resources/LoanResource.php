@@ -70,7 +70,63 @@ class LoanResource extends Resource
                             ->required()
                             ->native(false)
                             ->default('active'),
+
+
                     ])->columns(2),
+
+                // Section Baru: Informasi Pelunasan / Hapus Buku
+                Forms\Components\Section::make('Informasi Penyelesaian (Settlement)')
+                    ->description('Data ini wajib diisi jika status Kredit Lunas atau Hapus Buku')
+                    // Section ini hanya muncul jika status 'closed' atau 'write_off'
+                    ->visible(fn(Forms\Get $get) => in_array($get('status'), ['closed', 'write_off']))
+                    ->schema([
+                        Forms\Components\Grid::make(2)->schema([
+                            Forms\Components\DatePicker::make('settled_at')
+                                ->label('Tanggal Pelunasan/WO')
+                                ->required()
+                                ->native(false),
+
+                            Forms\Components\TextInput::make('write_off_basis_number')
+                                ->label('Nomor SK/Memo Landasan WO')
+                                // Hanya wajib jika status adalah Write Off
+                                ->required(fn(Forms\Get $get) => $get('status') === 'write_off')
+                                ->placeholder('Contoh: SK-DIR/001/X/2023'),
+                        ]),
+
+                        Forms\Components\Grid::make(4)->schema([
+                            Forms\Components\TextInput::make('settlement_principal')
+                                ->label('Pokok')
+                                ->numeric()
+                                ->prefix('Rp')
+                                ->required(),
+                            Forms\Components\TextInput::make('settlement_interest')
+                                ->label('Bunga')
+                                ->numeric()
+                                ->prefix('Rp')
+                                ->required(),
+                            Forms\Components\TextInput::make('settlement_penalty_principal')
+                                ->label('Denda Pokok')
+                                ->numeric()
+                                ->prefix('Rp')
+                                ->default(0),
+                            Forms\Components\TextInput::make('settlement_penalty_interest')
+                                ->label('Denda Bunga')
+                                ->numeric()
+                                ->prefix('Rp')
+                                ->default(0),
+                        ]),
+
+                        // Upload File Landasan Hapus Buku
+                        Forms\Components\SpatieMediaLibraryFileUpload::make('basis_file')
+                            ->label('Upload Dokumen Landasan (PDF)')
+                            ->collection('settlement_documents')
+                            ->acceptedFileTypes(['application/pdf'])
+                            ->visible(fn(Forms\Get $get) => $get('status') === 'write_off'),
+                    ])
+                    ->columns(1)
+                    ->collapsible(),
+
+
             ]);
     }
 

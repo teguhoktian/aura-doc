@@ -132,6 +132,12 @@ class DocumentResource extends Resource
                             ? 'heroicon-m-exclamation-triangle'
                             : null
                     ),
+
+                Tables\Columns\TextColumn::make('settled_at')
+                    ->label('Tgl Pelunasan')
+                    ->date('d/m/Y')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('document_type')

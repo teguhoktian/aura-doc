@@ -5,17 +5,25 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class Loan extends Model
+class Loan extends Model implements HasMedia
 {
-    use HasUuids;
+    use HasUuids, InteractsWithMedia;
 
     protected $fillable = [
         'loan_number',
         'debtor_name',
         'plafond',
         'disbursement_date',
-        'status'
+        'status',
+        'settled_at',
+        'settlement_principal',
+        'settlement_interest',
+        'settlement_penalty_principal',
+        'settlement_penalty_interest',
+        'write_off_basis_number',
     ];
 
     protected $with = ['loan_type'];
@@ -37,9 +45,17 @@ class Loan extends Model
 
     // Menangani format tanggal agar bisa dibaca Filament
     protected $casts = [
+        'settled_at' => 'date',
         'disbursement_date' => 'date',
         'plafond' => 'decimal:2',
     ];
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('settlement_documents')
+            ->useDisk('private')
+            ->singleFile();
+    }
 
     public function documents(): HasMany
     {

@@ -66,14 +66,10 @@ class LoanResource extends Resource
                             ->displayFormat('d/m/Y'),
 
                         Forms\Components\Select::make('status')
-                            ->options([
-                                'active' => 'Aktif',
-                                'closed' => 'Lunas',
-                                'liquidated' => 'Lelang/Penyelesaian',
-                            ])
+                            ->options(Loan::getStatuses()) // Mengambil dari helper di Model
                             ->required()
-                            ->default('active')
-                            ->native(false),
+                            ->native(false)
+                            ->default('active'),
                     ])->columns(2),
             ]);
     }
@@ -112,11 +108,14 @@ class LoanResource extends Resource
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
+                    ->formatStateUsing(fn(string $state): string => Loan::getStatuses()[$state] ?? $state)
                     ->color(fn(string $state): string => match ($state) {
-                        'active' => 'success',
-                        'closed' => 'gray',
-                        'liquidated' => 'danger',
-                    }),
+                        'active' => 'success',    // Hijau
+                        'closed' => 'info',       // Biru/Abu
+                        'write_off' => 'danger',  // Merah
+                        default => 'gray',
+                    })
+                    ->searchable(),
 
 
             ])

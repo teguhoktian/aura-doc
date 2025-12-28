@@ -20,6 +20,21 @@ class Loan extends Model
 
     protected $with = ['loan_type'];
 
+    // Senior Approach: Gunakan Konstanta
+    const STATUS_ACTIVE = 'active';
+    const STATUS_CLOSED = 'closed';
+    const STATUS_WRITE_OFF = 'write_off';
+
+    // Helper untuk label bahasa Indonesia
+    public static function getStatuses(): array
+    {
+        return [
+            self::STATUS_ACTIVE => 'Aktif',
+            self::STATUS_CLOSED => 'Lunas',
+            self::STATUS_WRITE_OFF => 'Hapus Buku',
+        ];
+    }
+
     // Menangani format tanggal agar bisa dibaca Filament
     protected $casts = [
         'disbursement_date' => 'date',

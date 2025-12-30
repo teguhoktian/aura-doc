@@ -14,6 +14,10 @@ class TransactionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'transactions';
 
+    protected $listeners = [
+        'refreshTransactions' => '$refresh',
+    ];
+
     public function form(Form $form): Form
     {
         return $form

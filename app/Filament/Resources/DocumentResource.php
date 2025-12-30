@@ -119,7 +119,8 @@ class DocumentResource extends Resource
                                     ->required()
                                     ->live()
                                     // Jika status diubah, bersihkan data notaris/storage yang tidak relevan
-                                    ->afterStateUpdated(function ($state, callable $set) {
+                                    ->afterStateUpdated(function ($state, callable $set, $record, callable $get, $livewire) {
+                                        // 1. Logika pembersihan data jika bukan ke notaris
                                         if ($state !== 'at_notary') {
                                             $set('notary_id', null);
                                             $set('sent_to_notary_at', null);
@@ -181,7 +182,7 @@ class DocumentResource extends Resource
                     ]),
 
                 Forms\Components\Section::make('Metadata Tambahan')
-                    ->collapsed()
+                    ->collapsed(false)
                     ->schema([
                         Forms\Components\KeyValue::make('legal_metadata')
                             ->label('Detail Spesifik Dokumen')

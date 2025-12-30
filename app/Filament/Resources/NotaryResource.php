@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\NotaryResource\Pages;
+use App\Filament\Resources\NotaryResource\RelationManagers\DocumentsRelationManager;
 use App\Models\Notary;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -104,8 +105,7 @@ class NotaryResource extends Resource
     public static function getRelations(): array
     {
         return [
-            // Nanti kita tambahkan DocumentsRelationManager di sini 
-            // agar bisa lihat daftar dokumen per notaris
+            DocumentsRelationManager::class,
         ];
     }
 

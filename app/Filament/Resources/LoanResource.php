@@ -16,7 +16,7 @@ use Filament\Support\Enums\Alignment;
 class LoanResource extends Resource
 {
     protected static ?string $model = Loan::class;
-    protected static ?string $navigationIcon = 'heroicon-o-banknotes'; // Ikon lebih relevan
+    protected static ?string $navigationIcon = 'heroicon-o-banknotes';
     protected static ?string $navigationGroup = 'Manajemen Kredit';
     protected static ?string $recordTitleAttribute = 'debtor_name';
 
@@ -25,16 +25,15 @@ class LoanResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Grid::make(3)->schema([
-                    // KOLOM UTAMA (KIRI)
+                    // KOLOM KIRI: Identitas Utama
                     Forms\Components\Group::make([
-                        Forms\Components\Section::make('Data Fasilitas Kredit')
-                            ->description('Detail utama kontrak dan nasabah')
+                        Forms\Components\Section::make('Informasi Debitur')
                             ->schema([
                                 Forms\Components\Select::make('branch_id')
                                     ->label('Kantor Cabang/KCP')
-                                    ->relationship('branch', 'name', fn($query) => $query->orderBy('branch_code'))
+                                    ->relationship('branch', 'name')
                                     ->getOptionLabelFromRecordUsing(fn($record) => "{$record->branch_code} - {$record->name}")
-                                    ->searchable(['branch_code', 'name'])
+                                    ->searchable()
                                     ->preload()
                                     ->required(),
 
@@ -43,15 +42,13 @@ class LoanResource extends Resource
                                     ->relationship('loan_type', 'description')
                                     ->getOptionLabelFromRecordUsing(fn($record) => "{$record->code} - {$record->description}")
                                     ->searchable()
-                                    ->preload()
                                     ->required(),
 
                                 Forms\Components\TextInput::make('loan_number')
-                                    ->label('Nomor Kontrak')
+                                    ->label('Nomor Kontrak (PK)')
                                     ->required()
                                     ->unique(ignoreRecord: true)
-                                    ->extraInputAttributes(['oninput' => 'this.value = this.value.toUpperCase()']) // Auto Uppercase
-                                    ->placeholder('PK/001/XII/2023'),
+                                    ->placeholder('Contoh: PK001-2025'),
 
                                 Forms\Components\TextInput::make('debtor_name')
                                     ->label('Nama Lengkap Nasabah')
@@ -59,48 +56,34 @@ class LoanResource extends Resource
                                     ->maxLength(255),
                             ])->columns(2),
 
-                        Forms\Components\Section::make('Informasi Penyelesaian (Settlement)')
-                            ->description('Input data ini saat kredit lunas atau hapus buku')
+                        // Section Kondisional Pelunasan
+                        Forms\Components\Section::make('Detail Penyelesaian')
                             ->visible(fn(Forms\Get $get) => in_array($get('status'), ['closed', 'write_off']))
-                            ->collapsed(fn($record) => $record?->status === 'active') // Collapse jika sudah lunas
                             ->schema([
-                                Forms\Components\Grid::make(2)->schema([
-                                    Forms\Components\DatePicker::make('settled_at')
-                                        ->label('Tanggal Pelunasan/WO')
-                                        ->required()
-                                        ->native(false),
-                                    Forms\Components\TextInput::make('write_off_basis_number')
-                                        ->label('No. SK Landasan WO')
-                                        ->required(fn(Forms\Get $get) => $get('status') === 'write_off')
-                                        ->visible(fn(Forms\Get $get) => $get('status') === 'write_off'),
-                                ]),
-
-                                Forms\Components\Grid::make(4)->schema([
-                                    Forms\Components\TextInput::make('settlement_principal')->label('Pokok')->numeric()->prefix('Rp')->required(),
-                                    Forms\Components\TextInput::make('settlement_interest')->label('Bunga')->numeric()->prefix('Rp')->required(),
-                                    Forms\Components\TextInput::make('settlement_penalty_principal')->label('Denda Pokok')->numeric()->prefix('Rp'),
-                                    Forms\Components\TextInput::make('settlement_penalty_interest')->label('Denda Bunga')->numeric()->prefix('Rp'),
-                                ]),
-                            ]),
+                                Forms\Components\DatePicker::make('settled_at')
+                                    ->label('Tanggal Lunas/WO')
+                                    ->required(),
+                                Forms\Components\TextInput::make('write_off_basis_number')
+                                    ->label('No. SK Hapus Buku')
+                                    ->required(fn(Forms\Get $get) => $get('status') === 'write_off'),
+                            ])->columns(2),
                     ])->columnSpan(2),
 
-                    // KOLOM KANAN (SIDEBAR FORM)
+                    // KOLOM KANAN: Status & Parameter
                     Forms\Components\Group::make([
-                        Forms\Components\Section::make('Status & Plafond')
+                        Forms\Components\Section::make('Status Kredit')
                             ->schema([
                                 Forms\Components\Select::make('status')
                                     ->options(Loan::getStatuses())
                                     ->required()
-                                    ->native(false)
                                     ->live()
-                                    ->default('active'),
+                                    ->native(false),
 
                                 Forms\Components\TextInput::make('plafond')
-                                    ->label('Nilai Plafond')
+                                    ->label('Plafond Nominal')
                                     ->numeric()
                                     ->prefix('Rp')
-                                    ->required()
-                                    ->minValue(0),
+                                    ->required(),
 
                                 Forms\Components\DatePicker::make('disbursement_date')
                                     ->label('Tgl Pencairan')
@@ -124,51 +107,46 @@ class LoanResource extends Resource
                     ->description(fn(Loan $record) => $record->loan_type->description),
 
                 Tables\Columns\TextColumn::make('debtor_name')
-                    ->label('Nasabah')
+                    ->label('Nama Nasabah')
                     ->searchable()
                     ->sortable()
-                    ->description(fn(Loan $record) => "Cabang: {$record->branch->name}"),
+                    ->description(fn(Loan $record) => "Cabang: " . ($record->branch->name ?? '-')),
 
                 Tables\Columns\TextColumn::make('plafond')
                     ->label('Plafond')
                     ->money('IDR')
-                    ->alignment(Alignment::Right),
+                    ->alignment(Alignment::Right)
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('documents_count')
-                    ->label('Dokumen')
+                    ->label('Berkas')
                     ->counts('documents')
                     ->badge()
-                    ->color(fn($state) => $state > 0 ? 'info' : 'gray'),
+                    ->color(fn($state) => $state > 0 ? 'info' : 'gray')
+                    ->suffix(' file'),
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(fn(string $state): string => Loan::getStatuses()[$state] ?? $state)
                     ->color(fn(string $state): string => match ($state) {
                         'active' => 'success',
                         'closed' => 'info',
                         'write_off' => 'danger',
                         default => 'gray',
-                    }),
+                    })
+                    ->formatStateUsing(fn(string $state) => Loan::getStatuses()[$state] ?? $state),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('status')
+                    ->options(Loan::getStatuses()),
                 Tables\Filters\SelectFilter::make('branch_id')
                     ->label('Kantor Cabang')
                     ->relationship('branch', 'name')
-                    ->searchable()
-                    ->preload(),
-
-                Tables\Filters\SelectFilter::make('status')
-                    ->options(Loan::getStatuses()),
+                    ->searchable(),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\ViewAction::make(),
                     Tables\Actions\EditAction::make(),
-                    Tables\Actions\Action::make('view_documents')
-                        ->label('Arsip Dokumen')
-                        ->icon('heroicon-o-folder-open')
-                        ->color('info')
-                        ->url(fn(Loan $record): string => static::getUrl('view', ['record' => $record])),
                 ]),
             ]);
     }
@@ -176,6 +154,7 @@ class LoanResource extends Resource
     public static function getRelations(): array
     {
         return [
+            // Sangat Penting: Menghubungkan daftar dokumen ke halaman Nasabah
             RelationManagers\DocumentsRelationManager::class,
         ];
     }

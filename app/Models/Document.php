@@ -19,14 +19,35 @@ class Document extends Model implements HasMedia
         'document_number',
         'status',
         'storage_id',
+        'notary_id',
         'legal_metadata',
-        'expiry_date', // Tambahkan ini jika di step sebelumnya belum ada
+        'sent_to_notary_at',
+        'expected_return_at',
+        'expiry_date',
     ];
 
     // Cast JSON agar otomatis menjadi array di Laravel
     protected $casts = [
+        'sent_to_notary_at' => 'date',
+        'expected_return_at' => 'date',
+        'expiry_date' => 'date',
         'legal_metadata' => 'array',
     ];
+
+    public static function getStatuses(): array
+    {
+        return [
+            'in_vault' => 'Tersimpan di Vault',
+            'at_notary' => 'Di Notaris', // Pastikan ini ada
+            'borrowed' => 'Dipinjam Internal',
+            'released' => 'Diserahkan (Lunas)',
+        ];
+    }
+
+    public function notary(): BelongsTo
+    {
+        return $this->belongsTo(Notary::class, 'notary_id');
+    }
 
     // Relasi ke tabel Loan
     public function loan(): BelongsTo

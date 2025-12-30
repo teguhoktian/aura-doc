@@ -24,6 +24,7 @@ class Document extends Model implements HasMedia
         'sent_to_notary_at',
         'expected_return_at',
         'expiry_date',
+        'document_release_id',
     ];
 
     // Cast JSON agar otomatis menjadi array di Laravel
@@ -85,5 +86,10 @@ class Document extends Model implements HasMedia
     public function document_type(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(DocumentType::class);
+    }
+
+    public function document_release()
+    {
+        return $this->belongsTo(DocumentRelease::class, 'document_release_id');
     }
 }

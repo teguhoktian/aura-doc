@@ -27,6 +27,19 @@ class LoanResource extends Resource
                 Forms\Components\Section::make('Data Debitur')
                     ->description('Informasi utama fasilitas kredit')
                     ->schema([
+                        Forms\Components\Select::make('branch_id')
+                            ->label('Kantor Cabang/KCP')
+                            ->relationship(
+                                name: 'branch',
+                                titleAttribute: 'name',
+                                // Senior Tip: Tambahkan query agar pencarian lebih akurat
+                                modifyQueryUsing: fn(Builder $query) => $query->orderBy('branch_code', 'asc')
+                            )
+                            ->getOptionLabelFromRecordUsing(fn($record) => "{$record->branch_code} - {$record->name}")
+                            ->searchable(['branch_code', 'name']) // User bisa cari "0031" atau "Sumber"
+                            ->preload() // Gunakan preload hanya jika total cabang < 100. Jika ribuan, hapus preload().
+                            ->required()
+                            ->loadingMessage('Mencari kantor jaringan...'),
                         Forms\Components\Select::make('loan_type_id')
                             ->label('Jenis Kredit (Loan Type)')
                             ->relationship('loan_type', 'description')
@@ -134,58 +147,109 @@ class LoanResource extends Resource
     {
         return $table
             ->columns([
+                // Kolom Nomor Kontrak & Jenis Kredit digabung agar compact
                 Tables\Columns\TextColumn::make('loan_number')
                     ->label('No. Kontrak')
                     ->searchable()
                     ->sortable()
-                    ->copyable(), // Memudahkan copy-paste nomor kontrak
-                Tables\Columns\TextColumn::make('loan_type.code')
-                    ->label('Kode')
-                    ->sortable(),
+                    ->copyable()
+                    ->description(fn(Loan $record): string => $record->loan_type->code . ' - ' . $record->loan_type->description),
 
-                Tables\Columns\TextColumn::make('loan_type.description')
-                    ->label('Jenis Kredit')
-                    ->description(fn(Loan $record): string => $record->loan_type->division ?? '')
-                    ->searchable(),
                 Tables\Columns\TextColumn::make('debtor_name')
-                    ->label('Nama Nasabah')
-                    ->searchable(),
+                    ->label('Nasabah')
+                    ->searchable()
+                    ->sortable()
+                    // Menambahkan info Kantor Jaringan di bawah nama nasabah
+                    ->description(fn(Loan $record): string => $record->branch ? "Kantor: {$record->branch->name}" : 'Cabang tidak terikat'),
 
                 Tables\Columns\TextColumn::make('plafond')
                     ->label('Plafond')
-                    ->money('IDR') // Format Rupiah otomatis
-                    ->sortable(),
+                    ->money('IDR')
+                    ->sortable()
+                    ->alignment('right'),
 
+                // Progress dokumen (Jumlah diunggah vs Total dokumen di sistem)
                 Tables\Columns\TextColumn::make('documents_count')
-                    ->label('Jml Dokumen')
-                    ->counts('documents') // Mengambil jumlah relasi secara otomatis
+                    ->label('Dokumen')
+                    ->counts('documents')
                     ->badge()
-                    ->color('info'),
+                    ->color(fn($state) => $state > 0 ? 'info' : 'gray')
+                    ->suffix(' file'),
 
+                Tables\Columns\TextColumn::make('disbursement_date')
+                    ->label('Pencairan')
+                    ->date('d/m/Y')
+                    ->sortable()
+                    ->toggleable(),
+
+                // Status dengan label yang sudah disempurnakan
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn(string $state): string => Loan::getStatuses()[$state] ?? $state)
                     ->color(fn(string $state): string => match ($state) {
-                        'active' => 'success',    // Hijau
-                        'closed' => 'info',       // Biru/Abu
-                        'write_off' => 'danger',  // Merah
+                        'active' => 'success',
+                        'closed' => 'info',
+                        'write_off' => 'danger',
                         default => 'gray',
                     })
+                    ->description(
+                        fn(Loan $record): ?string =>
+                        $record->status !== 'active' && $record->settled_at
+                            ? "Lunas: " . $record->settled_at->format('d/m/Y')
+                            : null
+                    )
                     ->searchable(),
-
-
             ])
             ->filters([
+                // Filter Status
                 Tables\Filters\SelectFilter::make('status')
+                    ->options(Loan::getStatuses()),
+
+                // Filter Berdasarkan Kantor Cabang
+                Tables\Filters\SelectFilter::make('branch_id')
+                    ->label('Kantor Jaringan')
+                    ->relationship('branch', 'name')
+                    ->searchable()
+                    ->preload(),
+
+                // Filter Berdasarkan Divisi (Melalui Relasi LoanType)
+                Tables\Filters\SelectFilter::make('division')
+                    ->label('Divisi')
                     ->options([
-                        'active' => 'Aktif',
-                        'closed' => 'Lunas',
-                    ]),
+                        'Divisi Komersial' => 'Komersial',
+                        'Divisi Konsumer' => 'Konsumer',
+                        'Divisi Mikro' => 'Mikro',
+                        'Divisi Kredit Ritel' => 'Ritel',
+                    ])
+                    ->query(
+                        fn(Builder $query, array $data) =>
+                        $query->when(
+                            $data['value'],
+                            fn($q) =>
+                            $q->whereHas('loan_type', fn($type) => $type->where('division', $data['value']))
+                        )
+                    ),
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
-            ]);
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\ViewAction::make(),
+                    Tables\Actions\EditAction::make(),
+                    // Shortcut untuk melihat dokumen langsung dari baris tabel
+                    Tables\Actions\Action::make('view_documents')
+                        ->label('Lihat Dokumen')
+                        ->icon('heroicon-o-document-magnifying-glass')
+                        ->url(fn(Loan $record): string => LoanResource::getUrl('view', ['record' => $record]) . '#relation-manager-documents'),
+                ]),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                    // Export data masal (jika sudah setup exporter)
+                    Tables\Actions\ExportBulkAction::make(),
+                ]),
+            ])
+            ->emptyStateHeading('Belum ada data pinjaman')
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array
@@ -200,6 +264,7 @@ class LoanResource extends Resource
         return [
             'index' => Pages\ListLoans::route('/'),
             'create' => Pages\CreateLoan::route('/create'),
+            'view' => Pages\ViewLoan::route('/{record}'), // TAMBAHKAN INI
             'edit' => Pages\EditLoan::route('/{record}/edit'),
         ];
     }

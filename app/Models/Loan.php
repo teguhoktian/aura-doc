@@ -66,4 +66,10 @@ class Loan extends Model implements HasMedia
     {
         return $this->belongsTo(LoanType::class);
     }
+
+    public function branch(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        // Pastikan foreign key di tabel loans adalah branch_id
+        return $this->belongsTo(Branch::class, 'branch_id');
+    }
 }

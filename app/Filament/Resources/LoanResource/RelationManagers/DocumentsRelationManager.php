@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\LoanResource\RelationManagers;
 
+use App\Models\Document;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -31,7 +32,10 @@ class DocumentsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('document_number')
             ->columns([
-                Tables\Columns\TextColumn::make('document_number')->label('Nomor Dokumen'),
+                Tables\Columns\TextColumn::make('document_number')
+                    ->label('Nomor Dokumen')
+                    ->searchable(),
+
                 Tables\Columns\TextColumn::make('document_type.name')
                     ->label('Jenis Dokumen')
                     ->badge()
@@ -40,16 +44,50 @@ class DocumentsRelationManager extends RelationManager
                         'SHM', 'SHT' => 'success',
                         default => 'gray',
                     }),
+
                 Tables\Columns\TextColumn::make('status')
-                    ->badge(),
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'in_vault' => 'success',
+                        'borrowed' => 'warning',
+                        'released' => 'gray',
+                        default => 'primary',
+                    }),
             ])
-            ->filters([
-                //
-            ])
+            ->filters([])
             ->headerActions([
-                // Tables\Actions\CreateAction::make(),
+                Tables\Actions\CreateAction::make(),
             ])
             ->actions([
+                // ACTION DOWNLOAD
+                Tables\Actions\Action::make('download')
+                    ->label('Download')
+                    ->icon('heroicon-o-arrow-down-tray')
+                    ->color('info')
+                    ->action(function (Document $record) {
+                        $media = $record->getFirstMedia('document_scans');
+                        if (!$media) return;
+
+                        // Mengambil path fisik file di disk private
+                        return response()->download($media->getPath(), $media->file_name);
+                    }),
+
+                // ACTION PREVIEW (Membuka PDF di Browser)
+                Tables\Actions\Action::make('preview')
+                    ->label('Preview')
+                    ->icon('heroicon-o-eye')
+                    ->color('success')
+                    ->action(function (Document $record) {
+                        $media = $record->getFirstMedia('document_scans');
+                        if (!$media) return;
+
+                        // Stream file secara langsung ke browser
+                        return response()->file($media->getPath(), [
+                            'Content-Type' => $media->mime_type,
+                            'Content-Disposition' => 'inline; filename="' . $media->file_name . '"',
+                        ]);
+                    }),
+
                 // Tables\Actions\EditAction::make(),
                 // Tables\Actions\DeleteAction::make(),
             ])

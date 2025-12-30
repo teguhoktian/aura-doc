@@ -45,8 +45,7 @@ class DocumentCategoryResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->label('Nama Kategori')
                     ->searchable()
-                    ->sortable()
-                    ->weight('bold'),
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('document_types_count')
                     ->label('Jumlah Jenis Dokumen')

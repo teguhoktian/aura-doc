@@ -41,19 +41,21 @@ class StorageResource extends Resource
 
                         Forms\Components\Select::make('parent_id')
                             ->label('Induk Lokasi')
-                            ->placeholder('Pilih lokasi satu tingkat di atasnya')
                             ->relationship('parent', 'name', function (Builder $query, Forms\Get $get) {
-                                // Logika Cerdas: Parent hanya boleh level yang lebih tinggi
                                 $currentLevel = $get('level');
+
                                 if ($currentLevel === 'room') return $query->where('level', 'warehouse');
                                 if ($currentLevel === 'rack') return $query->where('level', 'room');
                                 if ($currentLevel === 'box') return $query->where('level', 'rack');
-                                return $query->where('id', 0); // Jika warehouse, tidak punya parent
+
+                                // Jika level adalah warehouse (Top Level), jangan biarkan pilih parent
+                                // Berikan query yang menghasilkan nol hasil tapi valid secara syntax
+                                return $query->whereRaw('1 = 0');
                             })
                             ->searchable()
                             ->preload()
-                            ->disabled(fn(Forms\Get $get) => $get('level') === 'warehouse' || !$get('level'))
-                            ->required(fn(Forms\Get $get) => in_array($get('level'), ['room', 'rack', 'box'])),
+                            // Pastikan dinonaktifkan jika level adalah warehouse
+                            ->disabled(fn(Forms\Get $get) => $get('level') === 'warehouse' || !$get('level')),
 
                         Forms\Components\TextInput::make('name')
                             ->label('Nama Lokasi')

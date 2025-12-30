@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\BranchResource\Pages;
 use App\Models\Branch;
+use App\Models\Loan;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -46,13 +47,6 @@ class BranchResource extends Resource
                         ->preload()
                         ->required(fn($get) => in_array($get('type'), ['KCP', 'KK'])),
 
-                    Forms\Components\Select::make('parent_id')
-                        ->label('Kantor Cabang Induk')
-                        ->relationship('parent', 'name', fn($query) => $query->where('type', 'KC'))
-                        ->visible(fn($get) => in_array($get('type'), ['KCP', 'KK']))
-                        ->searchable()
-                        ->preload()
-                        ->required(fn($get) => in_array($get('type'), ['KCP', 'KK'])),
                 ])->columns(2)
         ]);
     }
@@ -67,13 +61,14 @@ class BranchResource extends Resource
                     ->sortable()
                     ->searchable(),
 
-                Tables\Columns\TextColumn::make('branch.name')
+                Tables\Columns\TextColumn::make('name') // Menggunakan field 'name' dari Branch itu sendiri
                     ->label('Kantor Jaringan')
                     ->description(
-                        fn(Loan $record): string =>
-                        $record->branch?->type === 'KC'
+                        // Ganti 'Loan $record' menjadi 'Branch $record' atau hilangkan tipenya
+                        fn(\App\Models\Branch $record): string =>
+                        $record->type === 'KC'
                             ? 'Kantor Cabang Induk'
-                            : "Induk: " . ($record->branch?->parent?->name ?? '-')
+                            : "Induk: " . ($record->parent?->name ?? '-')
                     )
                     ->searchable()
                     ->sortable(),

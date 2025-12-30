@@ -188,29 +188,73 @@ class DocumentResource extends Resource
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\EditAction::make(),
-                    // Action PINJAM (Logic sudah benar dari kode Anda)
+
+                    // 1. ACTION PINJAM (INTERNAL)
                     Tables\Actions\Action::make('borrow')
-                        ->label('Pinjam Berkas')
-                        ->icon('heroicon-o-share')
+                        ->label('Pinjam (Internal)')
+                        ->icon('heroicon-o-user')
                         ->color('warning')
                         ->visible(fn($record) => $record->status === 'in_vault')
                         ->form([
-                            Forms\Components\TextInput::make('borrower_name')->required(),
-                            Forms\Components\DatePicker::make('due_date')->required(),
-                            Forms\Components\Textarea::make('reason')->required(),
+                            Forms\Components\TextInput::make('borrower_name')->label('Nama Peminjam')->required(),
+                            Forms\Components\DatePicker::make('due_date')->label('Target Kembali')->required(),
+                            Forms\Components\Textarea::make('reason')->label('Alasan Peminjaman'),
                         ])
                         ->action(function (Document $record, array $data) {
+                            $record->transactions()->create([
+                                'user_id' => auth()->id(),
+                                'borrower_name' => $data['borrower_name'],
+                                'type' => 'borrow',
+                                'transaction_date' => now(),
+                                'due_date' => $data['due_date'],
+                                'reason' => $data['reason'],
+                            ]);
                             $record->update(['status' => 'borrowed']);
-                            // Logic simpan transaksi log di sini...
                         }),
-                ]),
+
+                    // 2. ACTION KEMBALIKAN KE VAULT
+                    Tables\Actions\Action::make('return_to_vault')
+                        ->label('Kembalikan ke Vault')
+                        ->icon('heroicon-o-arrow-down-on-square')
+                        ->color('success')
+                        ->visible(fn($record) => in_array($record->status, ['borrowed', 'at_notary']))
+                        ->requiresConfirmation()
+                        ->action(function (Document $record) {
+                            // Tutup transaksi terakhir yang masih open
+                            $record->transactions()->whereNull('returned_at')->latest()->first()?->update([
+                                'returned_at' => now()
+                            ]);
+
+                            $record->update(['status' => 'in_vault']);
+                        }),
+
+                    // 3. ACTION SERAHKAN (LUNAS/RELEASE)
+                    Tables\Actions\Action::make('release')
+                        ->label('Serahkan ke Nasabah (Lunas)')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('gray')
+                        ->visible(fn($record) => $record->status === 'in_vault')
+                        ->form([
+                            Forms\Components\TextInput::make('borrower_name')->label('Nama Penerima (Nasabah/Ahli Waris)')->required(),
+                            Forms\Components\DatePicker::make('transaction_date')->label('Tanggal Penyerahan')->default(now())->required(),
+                        ])
+                        ->action(function (Document $record, array $data) {
+                            $record->transactions()->create([
+                                'user_id' => auth()->id(),
+                                'borrower_name' => $data['borrower_name'],
+                                'type' => 'release',
+                                'transaction_date' => $data['transaction_date'],
+                            ]);
+                            $record->update(['status' => 'released']);
+                        }),
+                ])
             ]);
     }
 
     public static function getRelations(): array
     {
         return [
-            //
+            RelationManagers\TransactionsRelationManager::class,
         ];
     }
 

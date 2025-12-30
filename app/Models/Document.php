@@ -71,9 +71,15 @@ class Document extends Model implements HasMedia
     }
 
 
-    public function transactions(): HasMany
+    public function transactions(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    // Helper untuk mengambil transaksi yang masih menggantung (belum kembali)
+    public function latestOpenTransaction()
+    {
+        return $this->hasOne(Transaction::class)->whereNull('returned_at')->latest();
     }
 
     public function document_type(): \Illuminate\Database\Eloquent\Relations\BelongsTo

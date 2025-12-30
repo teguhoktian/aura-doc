@@ -21,6 +21,12 @@ class Transaction extends Model
         'reason'
     ];
 
+    protected $casts = [
+        'transaction_date' => 'date',
+        'due_date' => 'date',
+        'returned_at' => 'date',
+    ];
+
     public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);

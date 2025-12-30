@@ -10,23 +10,31 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class DocumentCategoryResource extends Resource
 {
     protected static ?string $model = DocumentCategory::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-folder'; // Ikon folder lebih cocok untuk kategori
+
+    protected static ?string $navigationGroup = 'Konfigurasi'; // Kelompokkan dengan LoanType
+
+    protected static ?string $recordTitleAttribute = 'name';
 
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\TextInput::make('name')
-                ->label('Nama Kategori')
-                ->required()
-                ->unique(ignoreRecord: true)
-                ->live(onBlur: true),
+            Forms\Components\Section::make('Kategori Dokumen')
+                ->description('Contoh: Dokumen Agunan, Dokumen Kredit, Dokumen Legalitas Nasabah')
+                ->schema([
+                    Forms\Components\TextInput::make('name')
+                        ->label('Nama Kategori')
+                        ->required()
+                        ->unique(ignoreRecord: true)
+                        ->placeholder('Masukkan nama kategori...')
+                        ->live(onBlur: true)
+                        ->columnSpanFull(),
+                ]),
         ]);
     }
 
@@ -34,17 +42,33 @@ class DocumentCategoryResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('name')
+                    ->label('Nama Kategori')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold'),
+
                 Tables\Columns\TextColumn::make('document_types_count')
-                    ->label('Jml Jenis Dokumen')
+                    ->label('Jumlah Jenis Dokumen')
                     ->counts('document_types')
-                    ->badge(),
+                    ->badge()
+                    ->color('info'),
+
+                Tables\Columns\TextColumn::make('updated_at')
+                    ->label('Terakhir Diperbarui')
+                    ->dateTime('d M Y H:i')
+                    ->color('gray')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
+            ->defaultSort('name')
             ->filters([
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\EditAction::make(),
+                    Tables\Actions\DeleteAction::make(),
+                ]),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -56,7 +80,8 @@ class DocumentCategoryResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            // Sangat disarankan menambahkan Relation Manager DocumentTypes
+            // RelationManagers\DocumentTypesRelationManager::class,
         ];
     }
 

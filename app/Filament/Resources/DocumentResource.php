@@ -14,27 +14,27 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
 
 class DocumentResource extends Resource
 {
     protected static ?string $model = Document::class;
-
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static ?string $navigationGroup = 'Manajemen Berkas';
+    protected static ?string $recordTitleAttribute = 'document_number';
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
                 Forms\Components\Grid::make(3)->schema([
-                    // KOLOM KIRI: Identitas & Tipe (Utama)
+                    // KOLOM KIRI: Identitas & Tipe
                     Forms\Components\Group::make()->schema([
                         Forms\Components\Section::make('Identitas Dokumen')
                             ->schema([
                                 Forms\Components\Select::make('loan_id')
-                                    ->label('Nomor Kontrak Kredit')
+                                    ->label('Nasabah / No. Kredit')
                                     ->relationship('loan', 'loan_number')
+                                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->loan_number} - {$record->debtor_name}")
                                     ->searchable()
                                     ->preload()
                                     ->required(),
@@ -49,27 +49,32 @@ class DocumentResource extends Resource
 
                                 Forms\Components\TextInput::make('document_number')
                                     ->label('Nomor Dokumen')
-                                    ->required(),
+                                    ->required()
+                                    ->placeholder('Misal: No. Sertifikat / No. PK'),
 
                                 Forms\Components\DatePicker::make('expiry_date')
                                     ->label('Tanggal Kadaluarsa')
+                                    // Hanya wajib jika Tipe Dokumen memang memiliki fitur expiry
                                     ->required(fn($get) => DocumentType::find($get('document_type_id'))?->has_expiry ?? false)
                                     ->visible(fn($get) => DocumentType::find($get('document_type_id'))?->has_expiry ?? false)
                                     ->native(false),
 
                                 Forms\Components\Select::make('status')
-                                    ->options([
-                                        'in_vault' => 'Tersimpan di Vault',
-                                        'at_notary' => 'Di Notaris',
-                                        'borrowed' => 'Dipinjam Internal',
-                                        'released' => 'Diserahkan (Lunas)',
-                                    ])
+                                    ->options(Document::getStatuses())
                                     ->required()
-                                    ->live(),
+                                    ->live()
+                                    // Jika status diubah, bersihkan data notaris/storage yang tidak relevan
+                                    ->afterStateUpdated(function ($state, callable $set) {
+                                        if ($state !== 'at_notary') {
+                                            $set('notary_id', null);
+                                            $set('sent_to_notary_at', null);
+                                            $set('expected_return_at', null);
+                                        }
+                                    }),
                             ]),
                     ])->columnSpan(2),
 
-                    // KOLOM KANAN: Lokasi & File (Kontrol)
+                    // KOLOM KANAN: Kontrol & File
                     Forms\Components\Group::make()->schema([
                         Forms\Components\Section::make('Penyimpanan Fisik')
                             ->schema([
@@ -79,7 +84,9 @@ class DocumentResource extends Resource
                                     ->getOptionLabelFromRecordUsing(fn(Storage $record) => "{$record->name} ({$record->code})")
                                     ->searchable()
                                     ->preload()
-                                    ->required(fn($get) => $get('status') === 'in_vault'),
+                                    // Hanya wajib jika statusnya 'in_vault'
+                                    ->required(fn($get) => $get('status') === 'in_vault')
+                                    ->placeholder('Pilih Box di Vault'),
                             ]),
 
                         Forms\Components\Section::make('Digital Scan')
@@ -95,37 +102,36 @@ class DocumentResource extends Resource
                     ])->columnSpan(1),
                 ]),
 
-                // SECTION BAWAH: Kondisional Notaris (Hanya muncul jika status at_notary)
+                // SECTION BAWAH: Kondisional Notaris
                 Forms\Components\Section::make('Pelacakan Notaris (SLA)')
-                    ->description('Informasi pengiriman berkas ke Notaris Rekanan')
+                    ->description('Hanya diisi jika dokumen sedang diproses di Notaris Rekanan.')
                     ->visible(fn($get) => $get('status') === 'at_notary')
                     ->schema([
                         Forms\Components\Grid::make(3)->schema([
                             Forms\Components\Select::make('notary_id')
                                 ->label('Nama Notaris')
                                 ->relationship('notary', 'name')
-                                ->required()
+                                ->required(fn($get) => $get('status') === 'at_notary')
                                 ->searchable(),
 
                             Forms\Components\DatePicker::make('sent_to_notary_at')
                                 ->label('Tanggal Kirim')
                                 ->default(now())
-                                ->required(),
+                                ->required(fn($get) => $get('status') === 'at_notary'),
 
                             Forms\Components\DatePicker::make('expected_return_at')
                                 ->label('Estimasi Kembali (SLA)')
-                                ->required(),
+                                ->required(fn($get) => $get('status') === 'at_notary'),
                         ]),
                     ]),
 
-                // SECTION BAWAH: Metadata
                 Forms\Components\Section::make('Metadata Tambahan')
                     ->collapsed()
                     ->schema([
                         Forms\Components\KeyValue::make('legal_metadata')
-                            ->label('Detail Teknis')
-                            ->keyLabel('Atribut')
-                            ->valueLabel('Keterangan'),
+                            ->label('Detail Spesifik Dokumen')
+                            ->keyLabel('Atribut (Contoh: Luas Tanah)')
+                            ->valueLabel('Nilai (Contoh: 150m2)'),
                     ]),
             ]);
     }
@@ -138,15 +144,17 @@ class DocumentResource extends Resource
                     ->label('No. Kredit')
                     ->searchable()
                     ->sortable()
-                    ->description(fn(Document $record): string => $record->loan?->debtor_name ?? ''),
+                    ->description(fn(Document $record): string => $record->loan?->debtor_name ?? 'Nasabah Tidak Ditemukan'),
 
                 Tables\Columns\TextColumn::make('document_type.name')
-                    ->label('Tipe')
-                    ->badge(),
+                    ->label('Jenis Berkas')
+                    ->badge()
+                    ->color('gray'),
 
                 Tables\Columns\TextColumn::make('document_number')
-                    ->label('Nomor')
-                    ->searchable(),
+                    ->label('Nomor Dokumen')
+                    ->searchable()
+                    ->copyable(),
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
@@ -157,48 +165,48 @@ class DocumentResource extends Resource
                         'released' => 'gray',
                         default => 'gray',
                     })
-                    // Icon khusus jika overdue di Notaris
                     ->icon(
                         fn(Document $record): ?string => ($record->status === 'at_notary' && optional($record->expected_return_at)->isPast())
                             ? 'heroicon-m-clock' : null
                     ),
 
                 Tables\Columns\TextColumn::make('storage.name')
-                    ->label('Lokasi')
-                    ->description(fn(Document $record): string => $record->storage?->code ?? 'N/A')
+                    ->label('Lokasi Fisik')
+                    ->description(fn(Document $record): string => $record->storage?->code ?? '-')
+                    ->placeholder('Tidak di Vault')
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('expiry_date')
-                    ->label('ED')
+                    ->label('Kadaluarsa')
                     ->date('d/m/Y')
                     ->color(fn($state) => ($state && Carbon::parse($state)->isPast()) ? 'danger' : 'gray')
                     ->sortable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'in_vault' => 'Di Vault',
-                        'at_notary' => 'Di Notaris',
-                        'borrowed' => 'Dipinjam',
-                    ]),
-                Tables\Filters\Filter::make('overdue_notary')
-                    ->label('Overdue di Notaris')
-                    ->query(fn(Builder $query) => $query->where('status', 'at_notary')->where('expected_return_at', '<', now())),
+                    ->options(Document::getStatuses()),
+
+                Tables\Filters\TernaryFilter::make('has_file')
+                    ->label('Memiliki Scan PDF')
+                    ->queries(
+                        true: fn(Builder $query) => $query->whereHas('media', fn($q) => $q->where('collection_name', 'document_scans')),
+                        false: fn(Builder $query) => $query->whereDoesntHave('media', fn($q) => $q->where('collection_name', 'document_scans')),
+                    ),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\EditAction::make(),
 
-                    // 1. ACTION PINJAM (INTERNAL)
+                    // Action: Borrow (Pinjam Internal)
                     Tables\Actions\Action::make('borrow')
-                        ->label('Pinjam (Internal)')
+                        ->label('Pinjam Internal')
                         ->icon('heroicon-o-user')
                         ->color('warning')
                         ->visible(fn($record) => $record->status === 'in_vault')
                         ->form([
-                            Forms\Components\TextInput::make('borrower_name')->label('Nama Peminjam')->required(),
-                            Forms\Components\DatePicker::make('due_date')->label('Target Kembali')->required(),
-                            Forms\Components\Textarea::make('reason')->label('Alasan Peminjaman'),
+                            Forms\Components\TextInput::make('borrower_name')->label('Nama Staf Peminjam')->required(),
+                            Forms\Components\DatePicker::make('due_date')->label('Tanggal Janji Kembali')->required(),
+                            Forms\Components\Textarea::make('reason')->label('Keperluan'),
                         ])
                         ->action(function (Document $record, array $data) {
                             $record->transactions()->create([
@@ -209,43 +217,24 @@ class DocumentResource extends Resource
                                 'due_date' => $data['due_date'],
                                 'reason' => $data['reason'],
                             ]);
-                            $record->update(['status' => 'borrowed']);
+                            $record->update(['status' => 'borrowed', 'storage_id' => null]);
                         }),
 
-                    // 2. ACTION KEMBALIKAN KE VAULT
+                    // Action: Return to Vault
                     Tables\Actions\Action::make('return_to_vault')
                         ->label('Kembalikan ke Vault')
                         ->icon('heroicon-o-arrow-down-on-square')
                         ->color('success')
                         ->visible(fn($record) => in_array($record->status, ['borrowed', 'at_notary']))
-                        ->requiresConfirmation()
-                        ->action(function (Document $record) {
-                            // Tutup transaksi terakhir yang masih open
-                            $record->transactions()->whereNull('returned_at')->latest()->first()?->update([
-                                'returned_at' => now()
-                            ]);
-
-                            $record->update(['status' => 'in_vault']);
-                        }),
-
-                    // 3. ACTION SERAHKAN (LUNAS/RELEASE)
-                    Tables\Actions\Action::make('release')
-                        ->label('Serahkan ke Nasabah (Lunas)')
-                        ->icon('heroicon-o-check-badge')
-                        ->color('gray')
-                        ->visible(fn($record) => $record->status === 'in_vault')
                         ->form([
-                            Forms\Components\TextInput::make('borrower_name')->label('Nama Penerima (Nasabah/Ahli Waris)')->required(),
-                            Forms\Components\DatePicker::make('transaction_date')->label('Tanggal Penyerahan')->default(now())->required(),
+                            Forms\Components\Select::make('storage_id')
+                                ->label('Simpan di Box Mana?')
+                                ->relationship('storage', 'name', fn($query) => $query->where('level', 'box'))
+                                ->required(),
                         ])
                         ->action(function (Document $record, array $data) {
-                            $record->transactions()->create([
-                                'user_id' => auth()->id(),
-                                'borrower_name' => $data['borrower_name'],
-                                'type' => 'release',
-                                'transaction_date' => $data['transaction_date'],
-                            ]);
-                            $record->update(['status' => 'released']);
+                            $record->transactions()->whereNull('returned_at')->latest()->first()?->update(['returned_at' => now()]);
+                            $record->update(['status' => 'in_vault', 'storage_id' => $data['storage_id']]);
                         }),
                 ])
             ]);

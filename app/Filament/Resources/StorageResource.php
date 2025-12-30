@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\StorageResource\Pages;
-use App\Filament\Resources\StorageResource\RelationManagers;
 use App\Models\Storage;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -11,44 +10,68 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class StorageResource extends Resource
 {
     protected static ?string $model = Storage::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-archive-box';
+
+    protected static ?string $navigationGroup = 'Konfigurasi';
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                Forms\Components\Card::make()->schema([
-                    Forms\Components\Select::make('level')
-                        ->options([
-                            'warehouse' => 'Gudang',
-                            'room' => 'Ruangan',
-                            'rack' => 'Rak',
-                            'box' => 'Box',
-                        ])
-                        ->required()
-                        ->reactive(),
+                Forms\Components\Section::make('Detail Lokasi Penyimpanan')
+                    ->description('Tentukan hierarki lokasi penyimpanan mulai dari Gudang hingga nomor Box.')
+                    ->schema([
+                        Forms\Components\Select::make('level')
+                            ->label('Tipe/Level Lokasi')
+                            ->options([
+                                'warehouse' => 'Gudang (Level 1)',
+                                'room' => 'Ruangan (Level 2)',
+                                'rack' => 'Rak (Level 3)',
+                                'box' => 'Box (Level 4)',
+                            ])
+                            ->required()
+                            ->native(false)
+                            ->reactive() // Penting agar parent_id bisa menyesuaikan
+                            ->afterStateUpdated(fn(callable $set) => $set('parent_id', null)),
 
-                    Forms\Components\Select::make('parent_id')
-                        ->label('Induk Lokasi')
-                        ->relationship('parent', 'name')
-                        ->searchable()
-                        ->placeholder('Pilih lokasi induk jika ada'),
+                        Forms\Components\Select::make('parent_id')
+                            ->label('Induk Lokasi')
+                            ->placeholder('Pilih lokasi satu tingkat di atasnya')
+                            ->relationship('parent', 'name', function (Builder $query, Forms\Get $get) {
+                                // Logika Cerdas: Parent hanya boleh level yang lebih tinggi
+                                $currentLevel = $get('level');
+                                if ($currentLevel === 'room') return $query->where('level', 'warehouse');
+                                if ($currentLevel === 'rack') return $query->where('level', 'room');
+                                if ($currentLevel === 'box') return $query->where('level', 'rack');
+                                return $query->where('id', 0); // Jika warehouse, tidak punya parent
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->disabled(fn(Forms\Get $get) => $get('level') === 'warehouse' || !$get('level'))
+                            ->required(fn(Forms\Get $get) => in_array($get('level'), ['room', 'rack', 'box'])),
 
-                    Forms\Components\TextInput::make('name')
-                        ->required()
-                        ->placeholder('Contoh: Rak Utama A1'),
+                        Forms\Components\TextInput::make('name')
+                            ->label('Nama Lokasi')
+                            ->required()
+                            ->placeholder('Contoh: Rak Agunan A-01'),
 
-                    Forms\Components\TextInput::make('code')
-                        ->label('Barcode/Unique Code')
-                        ->required()
-                        ->unique(ignoreRecord: true),
-                ])->columns(2)
+                        Forms\Components\TextInput::make('code')
+                            ->label('Kode Unik / Barcode')
+                            ->required()
+                            ->unique(ignoreRecord: true)
+                            ->placeholder('Contoh: RAK-A01-WH01')
+                            ->helperText('Gunakan kode yang akan dicetak pada label fisik.'),
+
+                        Forms\Components\Textarea::make('description')
+                            ->label('Keterangan Tambahan')
+                            ->placeholder('Contoh: Terletak di pojok kanan gudang utama')
+                            ->columnSpanFull(),
+                    ])->columns(2)
             ]);
     }
 
@@ -56,19 +79,10 @@ class StorageResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')
-                    ->label('Nama Lokasi')
-                    ->searchable()
-                    ->sortable()
-                    ->description(fn(Storage $record): string => $record->description ?? 'Tidak ada deskripsi'),
-
-                Tables\Columns\TextColumn::make('code')
-                    ->label('Barcode/Unit')
-                    ->searchable()
-                    ->fontFamily('mono') // Agar terlihat seperti kode barcode
-                    ->copyable()
-                    ->badge()
-                    ->color('gray'),
+                Tables\Columns\TextColumn::make('full_path')
+                    ->label('Nama & Jalur Lokasi')
+                    ->searchable(['name', 'code'])
+                    ->description(fn(Storage $record): string => $record->code),
 
                 Tables\Columns\TextColumn::make('level')
                     ->label('Level')
@@ -83,24 +97,20 @@ class StorageResource extends Resource
                     ->formatStateUsing(fn(string $state): string => ucfirst($state)),
 
                 Tables\Columns\TextColumn::make('parent.name')
-                    ->label('Induk Lokasi')
-                    ->placeholder('Top Level') // Jika tidak punya parent
-                    ->sortable(),
+                    ->label('Induk')
+                    ->placeholder('ROOT (Top Level)')
+                    ->toggleable(),
 
-                // Menghitung jumlah dokumen yang ada di lokasi ini (hanya untuk level box)
                 Tables\Columns\TextColumn::make('documents_count')
-                    ->label('Isi Dokumen')
+                    ->label('Isi Berkas')
                     ->counts('documents')
                     ->badge()
-                    ->visible(fn($record) => $record === null || $record->level === 'box'),
-
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->label('Update Terakhir')
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->color('info')
+                    // Hanya tampilkan hitungan jika levelnya 'box' (lokasi berkas fisik biasanya di box)
+                    ->visible(fn($record) => $record && $record->level === 'box'),
             ])
+            ->defaultSort('level', 'asc')
             ->filters([
-                // Filter berdasarkan Level (Gudang/Rak/Box)
                 Tables\Filters\SelectFilter::make('level')
                     ->options([
                         'warehouse' => 'Gudang',
@@ -110,12 +120,21 @@ class StorageResource extends Resource
                     ]),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\ViewAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\ViewAction::make(),
+                    Tables\Actions\EditAction::make(),
+                    Tables\Actions\DeleteAction::make()
+                        ->before(function (Storage $record, Tables\Actions\DeleteAction $action) {
+                            // Validasi: Jangan hapus jika ada dokumen di dalamnya
+                            if ($record->documents()->exists()) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Gagal Hapus')
+                                    ->body('Lokasi ini masih berisi dokumen fisik!')
+                                    ->danger()
+                                    ->send();
+                                $action->cancel();
+                            }
+                        }),
                 ]),
             ]);
     }
@@ -123,7 +142,8 @@ class StorageResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            // Relation Manager untuk melihat sub-lokasi (misal: isi dari satu Gudang)
+            // RelationManagers\ChildrenRelationManager::class,
         ];
     }
 

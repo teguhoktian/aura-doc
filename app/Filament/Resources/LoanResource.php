@@ -104,6 +104,7 @@ class LoanResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->copyable()
+                    // Menampilkan nama produk kredit di bawah nomor kontrak
                     ->description(fn(Loan $record) => $record->loan_type->description),
 
                 Tables\Columns\TextColumn::make('debtor_name')
@@ -111,6 +112,26 @@ class LoanResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->description(fn(Loan $record) => "Cabang: " . ($record->branch->name ?? '-')),
+
+                // KOLOM BARU: Jenis Kredit (Code)
+                Tables\Columns\TextColumn::make('loan_type.code')
+                    ->label('Tipe')
+                    ->badge()
+                    ->color('gray')
+                    ->sortable(),
+
+                // KOLOM BARU: Divisi (Mengambil dari relasi loan_type)
+                Tables\Columns\TextColumn::make('loan_type.division')
+                    ->label('Divisi')
+                    ->sortable()
+                    ->searchable()
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'Divisi Mikro' => 'success',
+                        'Divisi Komersial' => 'warning',
+                        'Divisi KPR' => 'danger',
+                        default => 'info',
+                    }),
 
                 Tables\Columns\TextColumn::make('plafond')
                     ->label('Plafond')
@@ -138,10 +159,28 @@ class LoanResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->options(Loan::getStatuses()),
+
                 Tables\Filters\SelectFilter::make('branch_id')
                     ->label('Kantor Cabang')
                     ->relationship('branch', 'name')
                     ->searchable(),
+
+                // FILTER BARU: Berdasarkan Divisi
+                Tables\Filters\SelectFilter::make('division')
+                    ->label('Filter Divisi')
+                    ->options(
+                        \App\Models\LoanType::query()
+                            ->whereNotNull('division')
+                            ->distinct()
+                            ->pluck('division', 'division') // key dan value menggunakan nama divisi
+                            ->toArray()
+                    )
+                    ->query(function (Builder $query, array $data) {
+                        if (!empty($data['value'])) {
+                            // Kita filter table Loan berdasarkan relasi loan_type
+                            $query->whereHas('loan_type', fn($q) => $q->where('division', $data['value']));
+                        }
+                    })
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([

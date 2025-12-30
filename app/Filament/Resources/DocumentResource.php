@@ -33,12 +33,67 @@ class DocumentResource extends Resource
                             ->schema([
                                 Forms\Components\Select::make('loan_id')
                                     ->label('Nasabah / No. Kredit')
-                                    ->relationship('loan', 'loan_number')
-                                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->loan_number} - {$record->debtor_name}")
-                                    ->searchable()
+                                    ->relationship(
+                                        name: 'loan',
+                                        titleAttribute: 'loan_number',
+                                        modifyQueryUsing: fn(Builder $query) => $query->with(['loan_type', 'branch'])
+                                    )
+                                    ->getOptionLabelFromRecordUsing(
+                                        fn($record) =>
+                                        "{$record->loan_number} - {$record->debtor_name} " .
+                                            "({$record->loan_type?->code} / {$record->loan_type?->division})"
+                                    )
+                                    ->searchable(['loan_number', 'debtor_name'])
+                                    ->required()
+                                    ->live() // WAJIB: Agar tombol muncul seketika setelah nasabah dipilih
                                     ->preload()
-                                    ->required(),
+                                    ->suffixAction(
+                                        Forms\Components\Actions\Action::make('view_loan_details')
+                                            ->icon('heroicon-m-eye')
+                                            ->tooltip('Lihat Detail Kredit')
+                                            ->color('info')
+                                            ->hidden(fn($get) => ! $get('loan_id'))
+                                            ->modalHeading('Detail Fasilitas Kredit')
+                                            ->modalSubmitAction(false)
+                                            ->modalCancelActionLabel('Tutup')
+                                            // Gunakan fillForm untuk menarik data
+                                            ->fillForm(function ($get) {
+                                                $loan = \App\Models\Loan::with(['loan_type', 'branch'])->find($get('loan_id'));
 
+                                                if (!$loan) return [];
+
+                                                return [
+                                                    'loan_number_display' => $loan->loan_number,
+                                                    'debtor_name_display' => $loan->debtor_name,
+                                                    'plafond_display' => "Rp " . number_format($loan->plafond, 0, ',', '.'),
+                                                    'status_display' => strtoupper($loan->status),
+                                                    'branch_display' => $loan->branch?->name,
+                                                    'type_display' => $loan->loan_type?->description,
+                                                ];
+                                            })
+                                            ->form([
+                                                Forms\Components\Grid::make(2)->schema([
+                                                    Forms\Components\TextInput::make('loan_number_display')
+                                                        ->label('Nomor Kontrak')
+                                                        ->disabled(),
+                                                    Forms\Components\TextInput::make('debtor_name_display')
+                                                        ->label('Nama Nasabah')
+                                                        ->disabled(),
+                                                    Forms\Components\TextInput::make('plafond_display')
+                                                        ->label('Plafond')
+                                                        ->disabled(),
+                                                    Forms\Components\TextInput::make('status_display')
+                                                        ->label('Status')
+                                                        ->disabled(),
+                                                    Forms\Components\TextInput::make('branch_display')
+                                                        ->label('Kantor Cabang')
+                                                        ->disabled(),
+                                                    Forms\Components\TextInput::make('type_display')
+                                                        ->label('Jenis Kredit')
+                                                        ->disabled(),
+                                                ])
+                                            ])
+                                    ),
                                 Forms\Components\Select::make('document_type_id')
                                     ->label('Jenis Dokumen')
                                     ->relationship('document_type', 'name')

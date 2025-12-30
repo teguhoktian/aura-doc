@@ -24,6 +24,8 @@ class Loan extends Model implements HasMedia
         'settlement_penalty_principal',
         'settlement_penalty_interest',
         'write_off_basis_number',
+        'branch_id',      // Tambahkan ini
+        'loan_type_id',   // Tambahkan ini
     ];
 
     protected $with = ['loan_type'];

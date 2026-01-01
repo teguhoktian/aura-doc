@@ -118,6 +118,8 @@ class DocumentResource extends Resource
                                     ->options(Document::getStatuses())
                                     ->required()
                                     ->live()
+                                    ->disabled(fn($context) => $context === 'edit')
+                                    ->dehydrated()
                                     // Jika status diubah, bersihkan data notaris/storage yang tidak relevan
                                     ->afterStateUpdated(function ($state, callable $set, $record, callable $get, $livewire) {
                                         // 1. Logika pembersihan data jika bukan ke notaris
@@ -140,6 +142,7 @@ class DocumentResource extends Resource
                                     ->getOptionLabelFromRecordUsing(fn(Storage $record) => "{$record->name} ({$record->code})")
                                     ->searchable()
                                     ->preload()
+                                    ->disabled(fn($record) => $record && $record->status !== 'in_vault')
                                     // Hanya wajib jika statusnya 'in_vault'
                                     ->required(fn($get) => $get('status') === 'in_vault')
                                     ->placeholder('Pilih Box di Vault'),
@@ -292,6 +295,45 @@ class DocumentResource extends Resource
                             $record->transactions()->whereNull('returned_at')->latest()->first()?->update(['returned_at' => now()]);
                             $record->update(['status' => 'in_vault', 'storage_id' => $data['storage_id']]);
                         }),
+
+                    Tables\Actions\Action::make('send_to_notary')
+                        ->label('Kirim ke Notaris')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('info')
+                        // Hanya muncul jika dokumen ada di Vault
+                        ->visible(fn($record) => $record->status === 'in_vault')
+                        ->form([
+                            Forms\Components\Select::make('notary_id')
+                                ->label('Pilih Notaris')
+                                ->relationship('notary', 'name')
+                                ->required(),
+                            Forms\Components\DatePicker::make('expected_return_at')
+                                ->label('Target Kembali (SLA)')
+                                ->required(),
+                            Forms\Components\Textarea::make('reason')
+                                ->label('Keperluan')
+                                ->placeholder('Contoh: Balik Nama / Pasang HT'),
+                        ])
+                        ->action(function (Document $record, array $data) {
+                            // Record Transaksi Keluar
+                            $record->transactions()->create([
+                                'user_id' => auth()->id(),
+                                'type' => 'notary_send',
+                                'borrower_name' => \App\Models\Notary::find($data['notary_id'])?->name,
+                                'transaction_date' => now(),
+                                'due_date' => $data['expected_return_at'],
+                                'reason' => $data['reason'],
+                            ]);
+
+                            // Update Dokumen
+                            $record->update([
+                                'status' => 'at_notary',
+                                'notary_id' => $data['notary_id'],
+                                'sent_to_notary_at' => now(),
+                                'expected_return_at' => $data['expected_return_at'],
+                                'storage_id' => null, // Kosongkan lokasi fisik karena barang keluar
+                            ]);
+                        })
                 ])
             ]);
     }

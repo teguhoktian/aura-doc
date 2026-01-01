@@ -28,7 +28,7 @@ class EditDocument extends EditRecord
             // Simpan transaksi
             $record->transactions()->create([
                 'user_id' => auth()->id(),
-                'type' => $state === 'at_notary' ? 'notary_send' : $state,
+                'type' => $state === 'at_notary' ? 'notary_send' : 'return',
                 'transaction_date' => now(),
                 'borrower_name' => $notaryName ?? 'SISTEM',
                 'reason' => "Status diperbarui via Form Edit menjadi: " . (Document::getStatuses()[$state] ?? $state),

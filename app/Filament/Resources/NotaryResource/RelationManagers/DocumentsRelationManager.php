@@ -88,6 +88,7 @@ class DocumentsRelationManager extends RelationManager
                             'borrower_name' => $this->getOwnerRecord()->name, // Nama Notaris sebagai "peminjam/pembawa" sebelumnya
                             'type' => 'notary_return', // Sesuaikan dengan enum/string type Anda
                             'transaction_date' => now(),
+                            'due_date' => $record->expected_return_at,
                             'returned_at' => $data['returned_at'],
                             'reason' => $data['reason'] ?? 'Dikembalikan oleh Notaris: ' . $this->getOwnerRecord()->name,
                         ]);

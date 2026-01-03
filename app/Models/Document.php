@@ -92,4 +92,9 @@ class Document extends Model implements HasMedia
     {
         return $this->belongsTo(DocumentRelease::class, 'document_release_id');
     }
+
+    public static function getLimitedStatuses(array $allowed): array
+    {
+        return array_intersect_key(self::getStatuses(), array_flip($allowed));
+    }
 }

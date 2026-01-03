@@ -14,6 +14,8 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use App\Services\DocumentWorkflowService;
+use Filament\Notifications\Notification;
 
 class DocumentResource extends Resource
 {
@@ -115,7 +117,12 @@ class DocumentResource extends Resource
                                     ->native(false),
 
                                 Forms\Components\Select::make('status')
-                                    ->options(Document::getStatuses())
+                                    ->label('Status Dokumen')
+                                    ->options(Document::getLimitedStatuses([
+                                        'in_vault',
+                                        'at_notary',
+                                    ]))
+                                    ->default('in_vault')
                                     ->required()
                                     ->live()
                                     ->disabled(fn($context) => $context === 'edit')
@@ -182,7 +189,10 @@ class DocumentResource extends Resource
                                             ->relationship('notary', 'name')
                                             ->searchable()
                                             ->preload()
-                                            ->required(fn($get) => $get('status') === 'at_notary')
+                                            ->required(
+                                                fn($get, $context) =>
+                                                $get('status') === 'at_notary' && $context === 'create'
+                                            )
                                             ->disabled(fn($context) => $context === 'edit')
                                             ->columnSpanFull(),
 
@@ -191,14 +201,20 @@ class DocumentResource extends Resource
                                                 ->label('Tanggal Kirim')
                                                 ->default(now())
                                                 ->native(false)
-                                                ->required(fn($get) => $get('status') === 'at_notary')
+                                                ->required(
+                                                    fn($get, $context) =>
+                                                    $get('status') === 'at_notary' && $context === 'create'
+                                                )
                                                 ->disabled(fn($context) => $context === 'edit'),
 
                                             Forms\Components\DatePicker::make('expected_return_at')
                                                 ->label('Estimasi Kembali (SLA)')
                                                 ->native(false)
                                                 ->prefix('SLA') // Menambah prefix untuk kejelasan
-                                                ->required(fn($get) => $get('status') === 'at_notary')
+                                                ->required(
+                                                    fn($get, $context) =>
+                                                    $get('status') === 'at_notary' && $context === 'create'
+                                                )
                                                 ->disabled(fn($context) => $context === 'edit'),
                                         ]),
                                     ])->columnSpan(2),
@@ -305,130 +321,93 @@ class DocumentResource extends Resource
                     Tables\Actions\EditAction::make(),
 
                     // Action: Borrow (Pinjam Internal)
+
                     Tables\Actions\Action::make('borrow')
                         ->label('Pinjam Internal')
                         ->icon('heroicon-o-user')
                         ->color('warning')
                         ->visible(fn($record) => $record->status === 'in_vault')
                         ->form([
-                            Forms\Components\TextInput::make('borrower_name')->label('Nama Staf Peminjam')->required(),
-                            Forms\Components\DatePicker::make('due_date')->label('Tanggal Janji Kembali')->required(),
-                            Forms\Components\Textarea::make('reason')->label('Keperluan'),
+                            Forms\Components\TextInput::make('borrower_name')->required(),
+                            Forms\Components\DatePicker::make('due_date')->required(),
+                            Forms\Components\Textarea::make('reason'),
                         ])
                         ->action(function (Document $record, array $data) {
-                            $record->transactions()->create([
-                                'user_id' => auth()->id(),
-                                'borrower_name' => $data['borrower_name'],
-                                'type' => 'borrow',
-                                'transaction_date' => now(),
-                                'due_date' => $data['due_date'],
-                                'reason' => $data['reason'],
-                            ]);
-                            $record->update(['status' => 'borrowed', 'storage_id' => null]);
+                            app(\App\Services\DocumentWorkflowService::class)
+                                ->apply($record, 'borrow', $data);
+
+                            Notification::make()
+                                ->title('Document Borrowed')
+                                ->success()
+                                ->send();
                         }),
 
                     // Action: Return to Vault
-                    Tables\Actions\Action::make('return_to_vault')
+                    Tables\Actions\Action::make('return')
                         ->label('Kembalikan ke Vault')
                         ->icon('heroicon-o-arrow-down-on-square')
                         ->color('success')
                         ->visible(fn($record) => in_array($record->status, ['borrowed', 'at_notary']))
                         ->form([
                             Forms\Components\Select::make('storage_id')
-                                ->label('Simpan di Box Mana?')
-                                ->relationship('storage', 'name', fn($query) => $query->where('level', 'box'))
+                                ->relationship(
+                                    'storage',
+                                    'name',
+                                    fn(Builder $query) => $query->where('level', 'box')
+                                )
                                 ->required(),
                         ])
                         ->action(function (Document $record, array $data) {
-                            // 1. Cari transaksi terakhir yang sedang berjalan (returned_at masih NULL)
-                            $lastTransaction = $record->transactions()
-                                ->whereNull('returned_at')
-                                ->latest()
-                                ->first();
+                            app(\App\Services\DocumentWorkflowService::class)
+                                ->apply($record, 'return', $data);
 
-                            if ($lastTransaction) {
-                                // 2. Cukup UPDATE baris yang sudah ada. Jangan buat record (create) baru.
-                                $lastTransaction->update([
-                                    'returned_at' => $data['returned_at'] ?? now(),
-                                    // Kita tambahkan catatan di kolom reason bahwa barang sudah di Vault
-                                    'reason' => $lastTransaction->reason . " (Diterima kembali di Vault pada " . now()->format('d/m/Y') . ")",
-                                ]);
-                            }
-
-                            // 3. Update status fisik dan data pelacakan pada model Document
-                            $record->update([
-                                'status'             => 'in_vault',
-                                'storage_id'         => $data['storage_id'],
-                                'notary_id'          => null,
-                                'sent_to_notary_at'  => null,
-                                'expected_return_at' => null,
-                            ]);
-
-                            \Filament\Notifications\Notification::make()
-                                ->title('Berkas Kembali ke Vault')
-                                ->body('Riwayat mutasi telah diperbarui secara otomatis.')
+                            Notification::make()
+                                ->title('Document Returned to Vault')
                                 ->success()
                                 ->send();
                         }),
 
-                    Tables\Actions\Action::make('send_to_notary')
+                    Tables\Actions\Action::make('sendNotary')
                         ->label('Kirim ke Notaris')
                         ->icon('heroicon-o-paper-airplane')
                         ->color('info')
-                        // Hanya muncul jika dokumen ada di Vault
                         ->visible(fn($record) => $record->status === 'in_vault')
                         ->form([
                             Forms\Components\Select::make('notary_id')
-                                ->label('Pilih Notaris')
                                 ->relationship('notary', 'name')
-                                ->searchable()
                                 ->required(),
-                            Forms\Components\DatePicker::make('expected_return_at')
-                                ->label('Target Kembali (SLA)')
-                                ->required(),
-                            Forms\Components\Textarea::make('reason')
-                                ->label('Keperluan')
-                                ->placeholder('Contoh: Balik Nama / Pasang HT'),
 
-                            // FIELD UPLOAD TANDA TERIMA
-                            Forms\Components\FileUpload::make('receipt_file')
-                                ->label('Upload Tanda Terima (BAST)')
-                                ->disk('private') // Disarankan gunakan disk privat untuk keamanan dokumen bank
-                                ->directory('document-receipts')
-                                ->visibility('private')
-                                ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
-                                ->maxSize(5120) // Limit 5MB
-                                ->helperText('Format PDF atau Gambar. Maksimal 5MB.')
-                                ->required(), // Wajibkan upload agar staf tidak lupa
+                            Forms\Components\DatePicker::make('expected_return_at')
+                                ->required(),
+
+                            Forms\Components\Textarea::make('reason'),
+
                         ])
                         ->action(function (Document $record, array $data) {
-                            /// 1. Catat Transaksi dengan path file tanda terima
-                            $record->transactions()->create([
-                                'user_id' => auth()->id(),
-                                'type' => 'notary_send',
-                                'borrower_name' => \App\Models\Notary::find($data['notary_id'])?->name,
-                                'transaction_date' => now(),
-                                'due_date' => $data['expected_return_at'],
-                                'reason' => $data['reason'],
-                                // Simpan path file ke kolom reason atau kolom khusus jika ada
-                                'notes' => 'File Tanda Terima: ' . $data['receipt_file'],
-                            ]);
+                            app(\App\Services\DocumentWorkflowService::class)
+                                ->apply($record, 'notary_send', $data);
 
-                            // 2. Update Status Dokumen
-                            $record->update([
-                                'status' => 'at_notary',
-                                'notary_id' => $data['notary_id'],
-                                'sent_to_notary_at' => now(),
-                                'expected_return_at' => $data['expected_return_at'],
-                                'storage_id' => null,
-                            ]);
-
-                            \Filament\Notifications\Notification::make()
-                                ->title('Berhasil Terkirim')
-                                ->body('Dokumen berhasil dicatat keluar ke Notaris.')
+                            Notification::make()
+                                ->title('Dokumen dikirim ke Notaris')
                                 ->success()
                                 ->send();
-                        })
+                        }),
+
+                    Tables\Actions\Action::make('release')
+                        ->label('Release')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->visible(fn($record) => in_array($record->status, ['in_vault', 'at_notary']))
+                        ->action(function (Document $record) {
+                            app(\App\Services\DocumentWorkflowService::class)
+                                ->apply($record, 'release');
+
+                            Notification::make()
+                                ->title('Dokumen Released')
+                                ->success()
+                                ->send();
+                        }),
                 ])
             ]);
     }

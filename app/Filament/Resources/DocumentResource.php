@@ -166,22 +166,70 @@ class DocumentResource extends Resource
                     ->description('Hanya diisi jika dokumen sedang diproses di Notaris Rekanan.')
                     ->visible(fn($get) => $get('status') === 'at_notary')
                     ->schema([
-                        Forms\Components\Grid::make(3)->schema([
-                            Forms\Components\Select::make('notary_id')
-                                ->label('Nama Notaris')
-                                ->relationship('notary', 'name')
-                                ->required(fn($get) => $get('status') === 'at_notary')
-                                ->searchable(),
+                        Forms\Components\Section::make('Pelacakan Notaris (SLA)')
+                            ->description('Informasi pengiriman berkas ke Notaris Rekanan.')
+                            ->visible(fn($get) => $get('status') === 'at_notary')
+                            ->icon('heroicon-m-arrow-path-rounded-square') // Menambah ikon agar lebih profesional
+                            ->schema([
+                                Forms\Components\Grid::make([
+                                    'default' => 1,
+                                    'lg' => 3, // Menggunakan responsif grid
+                                ])->schema([
+                                    // Grup Kiri: Detail Pengiriman
+                                    Forms\Components\Group::make([
+                                        Forms\Components\Select::make('notary_id')
+                                            ->label('Nama Notaris')
+                                            ->relationship('notary', 'name')
+                                            ->searchable()
+                                            ->preload()
+                                            ->required(fn($get) => $get('status') === 'at_notary')
+                                            ->disabled(fn($context) => $context === 'edit')
+                                            ->columnSpanFull(),
 
-                            Forms\Components\DatePicker::make('sent_to_notary_at')
-                                ->label('Tanggal Kirim')
-                                ->default(now())
-                                ->required(fn($get) => $get('status') === 'at_notary'),
+                                        Forms\Components\Grid::make(2)->schema([
+                                            Forms\Components\DatePicker::make('sent_to_notary_at')
+                                                ->label('Tanggal Kirim')
+                                                ->default(now())
+                                                ->native(false)
+                                                ->required(fn($get) => $get('status') === 'at_notary')
+                                                ->disabled(fn($context) => $context === 'edit'),
 
-                            Forms\Components\DatePicker::make('expected_return_at')
-                                ->label('Estimasi Kembali (SLA)')
-                                ->required(fn($get) => $get('status') === 'at_notary'),
-                        ]),
+                                            Forms\Components\DatePicker::make('expected_return_at')
+                                                ->label('Estimasi Kembali (SLA)')
+                                                ->native(false)
+                                                ->prefix('SLA') // Menambah prefix untuk kejelasan
+                                                ->required(fn($get) => $get('status') === 'at_notary')
+                                                ->disabled(fn($context) => $context === 'edit'),
+                                        ]),
+                                    ])->columnSpan(2),
+
+                                    // Grup Kanan: Upload BAST (Hanya saat Create)
+                                    Forms\Components\Group::make([
+                                        Forms\Components\FileUpload::make('initial_notary_receipt')
+                                            ->label('Tanda Terima (BAST)')
+                                            ->disk('private')
+                                            ->directory('notary-receipts')
+                                            ->imageEditor() // Fitur tambahan jika ingin crop/rotate scan
+                                            ->openable()
+                                            ->downloadable()
+                                            ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                                            ->maxSize(5120) // Limit 5MB
+                                            ->helperText('Format PDF atau Gambar. Maksimal 5MB.')
+                                            ->required(fn($get) => $get('status') === 'at_notary' && $get('context') === 'create')
+                                            ->helperText('Wajib lampirkan scan tanda terima.')
+                                            ->visible(fn($context) => $context === 'create')
+                                            // Membuat box upload memenuhi tinggi kolom sebelah kiri agar simetris
+                                            ->extraAttributes(['class' => 'h-full']),
+                                    ])->columnSpan(1),
+
+                                    // Tambahan Info Jika di mode Edit agar user tidak bingung kenapa disabled
+                                    Forms\Components\Placeholder::make('edit_info')
+                                        ->label('')
+                                        ->content('Informasi Notaris hanya dapat diubah melalui tombol Mutasi/Action.')
+                                        ->visible(fn($context) => $context === 'edit')
+                                        ->columnSpanFull(),
+                                ]),
+                            ]),
                     ]),
 
                 Forms\Components\Section::make('Metadata Tambahan')
@@ -292,8 +340,35 @@ class DocumentResource extends Resource
                                 ->required(),
                         ])
                         ->action(function (Document $record, array $data) {
-                            $record->transactions()->whereNull('returned_at')->latest()->first()?->update(['returned_at' => now()]);
-                            $record->update(['status' => 'in_vault', 'storage_id' => $data['storage_id']]);
+                            // 1. Cari transaksi terakhir yang sedang berjalan (returned_at masih NULL)
+                            $lastTransaction = $record->transactions()
+                                ->whereNull('returned_at')
+                                ->latest()
+                                ->first();
+
+                            if ($lastTransaction) {
+                                // 2. Cukup UPDATE baris yang sudah ada. Jangan buat record (create) baru.
+                                $lastTransaction->update([
+                                    'returned_at' => $data['returned_at'] ?? now(),
+                                    // Kita tambahkan catatan di kolom reason bahwa barang sudah di Vault
+                                    'reason' => $lastTransaction->reason . " (Diterima kembali di Vault pada " . now()->format('d/m/Y') . ")",
+                                ]);
+                            }
+
+                            // 3. Update status fisik dan data pelacakan pada model Document
+                            $record->update([
+                                'status'             => 'in_vault',
+                                'storage_id'         => $data['storage_id'],
+                                'notary_id'          => null,
+                                'sent_to_notary_at'  => null,
+                                'expected_return_at' => null,
+                            ]);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Berkas Kembali ke Vault')
+                                ->body('Riwayat mutasi telah diperbarui secara otomatis.')
+                                ->success()
+                                ->send();
                         }),
 
                     Tables\Actions\Action::make('send_to_notary')
@@ -306,6 +381,7 @@ class DocumentResource extends Resource
                             Forms\Components\Select::make('notary_id')
                                 ->label('Pilih Notaris')
                                 ->relationship('notary', 'name')
+                                ->searchable()
                                 ->required(),
                             Forms\Components\DatePicker::make('expected_return_at')
                                 ->label('Target Kembali (SLA)')
@@ -313,9 +389,20 @@ class DocumentResource extends Resource
                             Forms\Components\Textarea::make('reason')
                                 ->label('Keperluan')
                                 ->placeholder('Contoh: Balik Nama / Pasang HT'),
+
+                            // FIELD UPLOAD TANDA TERIMA
+                            Forms\Components\FileUpload::make('receipt_file')
+                                ->label('Upload Tanda Terima (BAST)')
+                                ->disk('private') // Disarankan gunakan disk privat untuk keamanan dokumen bank
+                                ->directory('document-receipts')
+                                ->visibility('private')
+                                ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                                ->maxSize(5120) // Limit 5MB
+                                ->helperText('Format PDF atau Gambar. Maksimal 5MB.')
+                                ->required(), // Wajibkan upload agar staf tidak lupa
                         ])
                         ->action(function (Document $record, array $data) {
-                            // Record Transaksi Keluar
+                            /// 1. Catat Transaksi dengan path file tanda terima
                             $record->transactions()->create([
                                 'user_id' => auth()->id(),
                                 'type' => 'notary_send',
@@ -323,16 +410,24 @@ class DocumentResource extends Resource
                                 'transaction_date' => now(),
                                 'due_date' => $data['expected_return_at'],
                                 'reason' => $data['reason'],
+                                // Simpan path file ke kolom reason atau kolom khusus jika ada
+                                'notes' => 'File Tanda Terima: ' . $data['receipt_file'],
                             ]);
 
-                            // Update Dokumen
+                            // 2. Update Status Dokumen
                             $record->update([
                                 'status' => 'at_notary',
                                 'notary_id' => $data['notary_id'],
                                 'sent_to_notary_at' => now(),
                                 'expected_return_at' => $data['expected_return_at'],
-                                'storage_id' => null, // Kosongkan lokasi fisik karena barang keluar
+                                'storage_id' => null,
                             ]);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Berhasil Terkirim')
+                                ->body('Dokumen berhasil dicatat keluar ke Notaris.')
+                                ->success()
+                                ->send();
                         })
                 ])
             ]);

@@ -38,14 +38,29 @@ class BranchResource extends Resource
                         ->required()
                         ->placeholder('Contoh: Cabang Sumber'),
 
+                    Forms\Components\Select::make('type')
+                        ->label('Tipe Kantor')
+                        ->options([
+                            'KC' => 'Kantor Cabang',
+                            'KCP' => 'Kantor Cabang Pembantu',
+                            'KK' => 'Kantor Kas',
+                        ])
+                        ->required()
+                        ->reactive(),
+
                     Forms\Components\Select::make('parent_id')
                         ->label('Kantor Cabang Induk')
-                        // Parameter pertama 'parent' harus sesuai dengan nama function di Model Branch
-                        ->relationship('parent', 'name', fn(Builder $query) => $query->where('type', 'KC'))
+                        ->relationship(
+                            name: 'parent',
+                            titleAttribute: 'name',
+                            modifyQueryUsing: fn(Builder $query) =>
+                            $query->where('type', 'KC')
+                        )
                         ->visible(fn($get) => in_array($get('type'), ['KCP', 'KK']))
+                        ->required(fn($get) => in_array($get('type'), ['KCP', 'KK']))
                         ->searchable()
                         ->preload()
-                        ->required(fn($get) => in_array($get('type'), ['KCP', 'KK'])),
+                        ->reactive()
 
                 ])->columns(2)
         ]);

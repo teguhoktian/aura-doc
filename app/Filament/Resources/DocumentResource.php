@@ -107,7 +107,12 @@ class DocumentResource extends Resource
                                 Forms\Components\TextInput::make('document_number')
                                     ->label('Nomor Dokumen')
                                     ->required()
-                                    ->placeholder('Misal: No. Sertifikat / No. PK'),
+                                    ->placeholder('Misal: No. Sertifikat / No. PK')
+                                    ->unique(
+                                        table: 'documents',
+                                        column: 'document_number',
+                                        ignorable: fn($record) => $record
+                                    ),
 
                                 Forms\Components\DatePicker::make('expiry_date')
                                     ->label('Tanggal Kadaluarsa')

@@ -100,25 +100,13 @@ class BorrowDocument extends Page implements HasForms
                             ])
                     ]),
 
-                Forms\Components\Section::make('Berita Acara Peminjaman')
-                    ->icon('heroicon-o-document-text')
-                    ->description('Upload dokumen tanda terima / berita acara peminjaman.')
-                    ->schema([
-                        Forms\Components\SpatieMediaLibraryFileUpload::make('receipt')
-                            ->label('Upload Berita Acara')
-                            ->collection('borrow_receipts')
-                            ->helperText('Format: PDF / JPG / PNG | Maks 5MB')
-                            ->openable()
-                            ->downloadable()
-                            ->acceptedFileTypes([
-                                'application/pdf',
-                                'image/jpeg',
-                                'image/png'
-                            ])
-                            ->maxSize(5120)
-                            ->required()
-                            ->columnSpanFull(),
-                    ])
+                Forms\Components\FileUpload::make('receipt')
+                    ->label('Upload Berita Acara')->disk('private')
+                    ->directory('temp')
+                    ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                    ->maxSize(5120)
+                    ->columnSpanFull()
+                    ->required(),
             ])
             ->columns(2)
             ->model($this->record)

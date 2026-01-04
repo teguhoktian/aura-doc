@@ -89,15 +89,20 @@ class TransactionsRelationManager extends RelationManager
                     ->label('Tanda Terima')
                     ->getStateUsing(
                         fn($record) =>
-                        $record->document && $record->document->hasMedia('borrow_return_receipts') ? 'Download BAST' : '-'
+                        $record->hasMedia('receipt')
+                            ? 'Download BAST'
+                            : '-'
                     )
-                    ->url(fn($record) => $record->document?->getFirstMediaUrl('borrow_return_receipts'))
-                    ->openUrlInNewTab(false) // jangan buka tab baru
-                    ->extraAttributes(fn($record) => [
-                        'download' => $record->document && $record->document->hasMedia('borrow_return_receipts') ? true : null
-                    ])
+                    ->url(
+                        fn($record) =>
+                        $record->getFirstMediaUrl('receipt')
+                    )
+                    ->openUrlInNewTab()
+                    ->icon(
+                        fn($record) =>
+                        $record->hasMedia('receipt') ? 'heroicon-o-arrow-down-on-square' : null
+                    )
                     ->color('primary')
-                    ->icon(fn($record) => $record->document && $record->document->hasMedia('borrow_return_receipts') ? 'heroicon-o-arrow-down-on-square' : null),
 
             ])
             ->filters([])

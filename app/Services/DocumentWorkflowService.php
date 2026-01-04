@@ -133,6 +133,14 @@ class DocumentWorkflowService
                 break;
         }
 
-        return Transaction::create($transactionPayload);
+        $transaction = Transaction::create($transactionPayload);
+
+        if (! empty($payload['receipt'])) {
+            $transaction
+                ->addMediaFromDisk($payload['receipt'], 'private')
+                ->toMediaCollection('receipt');
+        }
+
+        return $transaction;
     }
 }

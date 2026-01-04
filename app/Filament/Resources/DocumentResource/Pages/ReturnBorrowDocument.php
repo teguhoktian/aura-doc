@@ -124,6 +124,7 @@ class ReturnBorrowDocument extends Page implements HasForms
 
                         Forms\Components\Select::make('storage_id')
                             ->label('Simpan ke Box')
+                            ->searchable()
                             ->relationship(
                                 name: 'storage',
                                 titleAttribute: 'name',
@@ -132,13 +133,13 @@ class ReturnBorrowDocument extends Page implements HasForms
                             )
                             ->required(),
 
-                        Forms\Components\SpatieMediaLibraryFileUpload::make('receipt')
-                            ->label('Upload BA Pengembalian')
-                            ->collection('borrow_return_receipts')
-                            ->helperText('PDF / JPG / PNG max 5MB')
-                            ->required()
-                            ->openable()
-                            ->downloadable(),
+                        Forms\Components\FileUpload::make('receipt')
+                            ->label('Upload Berita Acara')->disk('private')
+                            ->directory('temp')
+                            ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                            ->maxSize(5120)
+                            ->columnSpanFull()
+                            ->required(),
                     ])
                     ->columns(2),
             ])

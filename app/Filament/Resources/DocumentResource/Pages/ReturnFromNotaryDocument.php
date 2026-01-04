@@ -102,13 +102,13 @@ class ReturnFromNotaryDocument extends Page implements HasForms
                             )
                             ->required(),
 
-                        Forms\Components\SpatieMediaLibraryFileUpload::make('receipt')
-                            ->label('Upload BAST Pengembalian')
-                            ->collection('notary_return_receipts')
-                            ->helperText('PDF / JPG / PNG max 5MB')
-                            ->required()
-                            ->openable()
-                            ->downloadable(),
+                        Forms\Components\FileUpload::make('receipt')
+                            ->label('Upload Berita Acara')->disk('private')
+                            ->directory('temp')
+                            ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                            ->maxSize(5120)
+                            ->columnSpanFull()
+                            ->required(),
                     ])
                     ->columns(2),
             ])

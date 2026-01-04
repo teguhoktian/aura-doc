@@ -101,12 +101,13 @@ class SendToNotaryDocument extends Page implements HasForms
                         Forms\Components\Textarea::make('reason')
                             ->label('Keperluan / Keterangan'),
 
-                        Forms\Components\SpatieMediaLibraryFileUpload::make('receipt')
-                            ->label('Upload BAST')
-                            ->collection('notary_receipts')
-                            ->required()
-                            ->openable()
-                            ->downloadable()
+                        Forms\Components\FileUpload::make('receipt')
+                            ->label('Upload Berita Acara')->disk('private')
+                            ->directory('temp')
+                            ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                            ->maxSize(5120)
+                            ->columnSpanFull()
+                            ->required(),
                     ])
             ])
             ->model($this->record)

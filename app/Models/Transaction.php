@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class Transaction extends Model
+class Transaction extends Model implements HasMedia
 {
+    use InteractsWithMedia;
     use HasUuids;
 
     protected $fillable = [
@@ -26,6 +29,11 @@ class Transaction extends Model
         'due_date' => 'date',
         'returned_at' => 'date',
     ];
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('receipt')->useDisk('private');
+    }
 
     public function document(): BelongsTo
     {

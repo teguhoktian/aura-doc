@@ -89,18 +89,18 @@ class TransactionsRelationManager extends RelationManager
                     ->label('Tanda Terima')
                     ->getStateUsing(
                         fn($record) =>
-                        $record->hasMedia('receipt')
-                            ? 'Download BAST'
-                            : '-'
+                        $record->hasMedia('receipt') ? 'Preview / Download' : '-'
                     )
                     ->url(
                         fn($record) =>
-                        $record->getFirstMediaUrl('receipt')
+                        route('secure.media', $record->getFirstMedia('receipt'))
                     )
                     ->openUrlInNewTab()
                     ->icon(
                         fn($record) =>
-                        $record->hasMedia('receipt') ? 'heroicon-o-arrow-down-on-square' : null
+                        $record->hasMedia('receipt')
+                            ? 'heroicon-o-arrow-down-on-square'
+                            : null
                     )
                     ->color('primary')
 

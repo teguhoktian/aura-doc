@@ -329,94 +329,14 @@ class DocumentResource extends Resource
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\EditAction::make(),
 
-                    // Action: Borrow (Pinjam Internal)
-
+                    // Custom Action: Pinjam Dokumen
                     Tables\Actions\Action::make('borrow')
                         ->label('Pinjam Internal')
                         ->icon('heroicon-o-user')
                         ->color('warning')
                         ->visible(fn($record) => $record->status === 'in_vault')
-                        ->form([
-                            Forms\Components\TextInput::make('borrower_name')->required(),
-                            Forms\Components\DatePicker::make('due_date')->required(),
-                            Forms\Components\Textarea::make('reason'),
-                        ])
-                        ->action(function (Document $record, array $data) {
-                            app(\App\Services\DocumentWorkflowService::class)
-                                ->apply($record, 'borrow', $data);
+                        ->url(fn($record) => DocumentResource::getUrl('borrow', ['record' => $record]))
 
-                            Notification::make()
-                                ->title('Document Borrowed')
-                                ->success()
-                                ->send();
-                        }),
-
-                    // Action: Return to Vault
-                    Tables\Actions\Action::make('return')
-                        ->label('Kembalikan ke Vault')
-                        ->icon('heroicon-o-arrow-down-on-square')
-                        ->color('success')
-                        ->visible(fn($record) => in_array($record->status, ['borrowed', 'at_notary']))
-                        ->form([
-                            Forms\Components\Select::make('storage_id')
-                                ->relationship(
-                                    'storage',
-                                    'name',
-                                    fn(Builder $query) => $query->where('level', 'box')
-                                )
-                                ->required(),
-                        ])
-                        ->action(function (Document $record, array $data) {
-                            app(\App\Services\DocumentWorkflowService::class)
-                                ->apply($record, 'return', $data);
-
-                            Notification::make()
-                                ->title('Document Returned to Vault')
-                                ->success()
-                                ->send();
-                        }),
-
-                    Tables\Actions\Action::make('sendNotary')
-                        ->label('Kirim ke Notaris')
-                        ->icon('heroicon-o-paper-airplane')
-                        ->color('info')
-                        ->visible(fn($record) => $record->status === 'in_vault')
-                        ->form([
-                            Forms\Components\Select::make('notary_id')
-                                ->relationship('notary', 'name')
-                                ->required(),
-
-                            Forms\Components\DatePicker::make('expected_return_at')
-                                ->required(),
-
-                            Forms\Components\Textarea::make('reason'),
-
-                        ])
-                        ->action(function (Document $record, array $data) {
-                            app(\App\Services\DocumentWorkflowService::class)
-                                ->apply($record, 'notary_send', $data);
-
-                            Notification::make()
-                                ->title('Dokumen dikirim ke Notaris')
-                                ->success()
-                                ->send();
-                        }),
-
-                    Tables\Actions\Action::make('release')
-                        ->label('Release')
-                        ->icon('heroicon-o-check-badge')
-                        ->color('danger')
-                        ->requiresConfirmation()
-                        ->visible(fn($record) => in_array($record->status, ['in_vault', 'at_notary']))
-                        ->action(function (Document $record) {
-                            app(\App\Services\DocumentWorkflowService::class)
-                                ->apply($record, 'release');
-
-                            Notification::make()
-                                ->title('Dokumen Released')
-                                ->success()
-                                ->send();
-                        }),
                 ])
             ]);
     }
@@ -434,6 +354,8 @@ class DocumentResource extends Resource
             'index' => Pages\ListDocuments::route('/'),
             'create' => Pages\CreateDocument::route('/create'),
             'edit' => Pages\EditDocument::route('/{record}/edit'),
+
+            'borrow' => Pages\BorrowDocument::route('/{record}/borrow'),
         ];
     }
 }

@@ -65,6 +65,8 @@ class Document extends Model implements HasMedia
 
         $this->addMediaCollection('notary_receipts')
             ->useDisk('private');
+
+        $this->addMediaCollection('borrow_receipts')->useDisk('private');
     }
 
     // app/Models/Document.php

@@ -335,7 +335,15 @@ class DocumentResource extends Resource
                         ->icon('heroicon-o-user')
                         ->color('warning')
                         ->visible(fn($record) => $record->status === 'in_vault')
-                        ->url(fn($record) => DocumentResource::getUrl('borrow', ['record' => $record]))
+                        ->url(fn($record) => DocumentResource::getUrl('borrow', ['record' => $record])),
+
+                    // Custom Action: Kembalikan Dokumen
+                    Tables\Actions\Action::make('return_borrow')
+                        ->label('Kembalikan Dokumen')
+                        ->icon('heroicon-o-archive-box-arrow-down')
+                        ->color('success')
+                        ->visible(fn($record) => $record->status === 'borrowed')
+                        ->url(fn($record) => DocumentResource::getUrl('return-borrow', ['record' => $record])),
 
                 ])
             ]);
@@ -356,6 +364,7 @@ class DocumentResource extends Resource
             'edit' => Pages\EditDocument::route('/{record}/edit'),
 
             'borrow' => Pages\BorrowDocument::route('/{record}/borrow'),
+            'return-borrow' => Pages\ReturnBorrowDocument::route('/{record}/return-borrow'),
         ];
     }
 }

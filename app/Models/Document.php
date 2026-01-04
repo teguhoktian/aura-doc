@@ -67,6 +67,8 @@ class Document extends Model implements HasMedia
             ->useDisk('private');
 
         $this->addMediaCollection('borrow_receipts')->useDisk('private');
+
+        $this->addMediaCollection('borrow_return_receipts')->useDisk('private');
     }
 
     // app/Models/Document.php
@@ -101,5 +103,12 @@ class Document extends Model implements HasMedia
     public static function getLimitedStatuses(array $allowed): array
     {
         return array_intersect_key(self::getStatuses(), array_flip($allowed));
+    }
+
+    public function lastBorrowTransaction()
+    {
+        return $this->hasOne(Transaction::class)
+            ->where('type', 'borrow')
+            ->orderByDesc('created_at');
     }
 }

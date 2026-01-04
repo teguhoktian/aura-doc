@@ -62,6 +62,9 @@ class Document extends Model implements HasMedia
         $this->addMediaCollection('document_scans')
             ->useDisk('private') // Pastikan disk 'private' ada di config/filesystems.php
             ->singleFile();
+
+        $this->addMediaCollection('notary_receipts')
+            ->useDisk('private');
     }
 
     // app/Models/Document.php

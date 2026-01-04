@@ -107,13 +107,20 @@ class DocumentResource extends Resource
                                 Forms\Components\TextInput::make('document_number')
                                     ->label('Nomor Dokumen')
                                     ->required()
-                                    ->placeholder('Misal: No. Sertifikat / No. PK')
-                                    ->unique(
-                                        table: 'documents',
-                                        column: 'document_number',
-                                        ignorable: fn($record) => $record
-                                    ),
-
+                                    ->rule(function ($get, $record) {
+                                        return \Illuminate\Validation\Rule::unique('documents', 'document_number')
+                                            ->where(
+                                                fn($query) =>
+                                                $query
+                                                    ->where('loan_id', $get('loan_id'))
+                                                    ->where('document_type_id', $get('document_type_id'))
+                                            )
+                                            ->ignore($record?->id);
+                                    })
+                                    ->validationMessages([
+                                        'required' => 'Nomor dokumen wajib diisi.',
+                                        'unique' => 'Nomor dokumen ini sudah ada untuk kredit & jenis dokumen tersebut.',
+                                    ]),
                                 Forms\Components\DatePicker::make('expiry_date')
                                     ->label('Tanggal Kadaluarsa')
                                     // Hanya wajib jika Tipe Dokumen memang memiliki fitur expiry
@@ -147,6 +154,7 @@ class DocumentResource extends Resource
                     // KOLOM KANAN: Kontrol & File
                     Forms\Components\Group::make()->schema([
                         Forms\Components\Section::make('Penyimpanan Fisik')
+                            ->disabled(fn($get) => $get('status') !== 'in_vault')
                             ->schema([
                                 Forms\Components\Select::make('storage_id')
                                     ->label('Posisi Box/Rak')
@@ -178,85 +186,81 @@ class DocumentResource extends Resource
                     ->description('Hanya diisi jika dokumen sedang diproses di Notaris Rekanan.')
                     ->visible(fn($get) => $get('status') === 'at_notary')
                     ->schema([
-                        Forms\Components\Section::make('Pelacakan Notaris (SLA)')
-                            ->description('Informasi pengiriman berkas ke Notaris Rekanan.')
-                            ->visible(fn($get) => $get('status') === 'at_notary')
-                            ->icon('heroicon-m-arrow-path-rounded-square') // Menambah ikon agar lebih profesional
-                            ->schema([
-                                Forms\Components\Grid::make([
-                                    'default' => 1,
-                                    'lg' => 3, // Menggunakan responsif grid
-                                ])->schema([
-                                    // Grup Kiri: Detail Pengiriman
-                                    Forms\Components\Group::make([
-                                        Forms\Components\Select::make('notary_id')
-                                            ->label('Nama Notaris')
-                                            ->relationship('notary', 'name')
-                                            ->searchable()
-                                            ->preload()
-                                            ->required(
-                                                fn($get, $context) =>
-                                                $get('status') === 'at_notary' && $context === 'create'
-                                            )
-                                            ->disabled(fn($context) => $context === 'edit')
-                                            ->columnSpanFull(),
 
-                                        Forms\Components\Grid::make(2)->schema([
-                                            Forms\Components\DatePicker::make('sent_to_notary_at')
-                                                ->label('Tanggal Kirim')
-                                                ->default(now())
-                                                ->native(false)
-                                                ->required(
-                                                    fn($get, $context) =>
-                                                    $get('status') === 'at_notary' && $context === 'create'
-                                                )
-                                                ->disabled(fn($context) => $context === 'edit'),
+                        Forms\Components\Grid::make([
+                            'default' => 1,
+                            'lg' => 2, // Menggunakan responsif grid
+                        ])->schema([
+                            // Grup Kiri: Detail Pengiriman
+                            Forms\Components\Group::make([
+                                Forms\Components\Select::make('notary_id')
+                                    ->label('Nama Notaris')
+                                    ->relationship('notary', 'name')
+                                    ->searchable()
+                                    ->preload()
+                                    ->required(
+                                        fn($get, $context) =>
+                                        $get('status') === 'at_notary' && $context === 'create'
+                                    )
+                                    ->disabled(fn($context) => $context === 'edit')
+                                    ->columnSpanFull(),
 
-                                            Forms\Components\DatePicker::make('expected_return_at')
-                                                ->label('Estimasi Kembali (SLA)')
-                                                ->native(false)
-                                                ->prefix('SLA') // Menambah prefix untuk kejelasan
-                                                ->required(
-                                                    fn($get, $context) =>
-                                                    $get('status') === 'at_notary' && $context === 'create'
-                                                )
-                                                ->disabled(fn($context) => $context === 'edit'),
-                                        ]),
-                                    ])->columnSpan(2),
+                                Forms\Components\Grid::make(2)->schema([
+                                    Forms\Components\DatePicker::make('sent_to_notary_at')
+                                        ->label('Tanggal Kirim')
+                                        ->default(now())
+                                        ->native(false)
+                                        ->required(
+                                            fn($get, $context) =>
+                                            $get('status') === 'at_notary' && $context === 'create'
+                                        )
+                                        ->disabled(fn($context) => $context === 'edit'),
 
-                                    // Grup Kanan: Upload BAST (Hanya saat Create)
-                                    Forms\Components\Group::make([
-                                        Forms\Components\FileUpload::make('initial_notary_receipt')
-                                            ->label('Tanda Terima (BAST)')
-                                            ->disk('private')
-                                            ->directory('notary-receipts')
-                                            ->imageEditor() // Fitur tambahan jika ingin crop/rotate scan
-                                            ->openable()
-                                            ->downloadable()
-                                            ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
-                                            ->maxSize(5120) // Limit 5MB
-                                            ->helperText('Format PDF atau Gambar. Maksimal 5MB.')
-                                            ->required(fn($get) => $get('status') === 'at_notary' && $get('context') === 'create')
-                                            ->helperText('Wajib lampirkan scan tanda terima.')
-                                            ->visible(fn($context) => $context === 'create')
-                                            // Membuat box upload memenuhi tinggi kolom sebelah kiri agar simetris
-                                            ->extraAttributes(['class' => 'h-full']),
-                                    ])->columnSpan(1),
-
-                                    // Tambahan Info Jika di mode Edit agar user tidak bingung kenapa disabled
-                                    Forms\Components\Placeholder::make('edit_info')
-                                        ->label('')
-                                        ->content('Informasi Notaris hanya dapat diubah melalui tombol Mutasi/Action.')
-                                        ->visible(fn($context) => $context === 'edit')
-                                        ->columnSpanFull(),
+                                    Forms\Components\DatePicker::make('expected_return_at')
+                                        ->label('Estimasi Kembali (SLA)')
+                                        ->native(false)
+                                        ->prefix('SLA') // Menambah prefix untuk kejelasan
+                                        ->required(
+                                            fn($get, $context) =>
+                                            $get('status') === 'at_notary' && $context === 'create'
+                                        )
+                                        ->disabled(fn($context) => $context === 'edit'),
                                 ]),
-                            ]),
+                            ])->columnSpan(2),
+
+                            // Grup Kanan: Upload BAST (Hanya saat Create)
+                            Forms\Components\Group::make([
+                                Forms\Components\SpatieMediaLibraryFileUpload::make('initial_notary_receipt')
+                                    ->label('Tanda Terima (BAST)')
+                                    ->disk('private')
+                                    ->directory('notary-receipts')
+                                    ->imageEditor() // Fitur tambahan jika ingin crop/rotate scan
+                                    ->openable()
+                                    ->downloadable()
+                                    ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                                    ->maxSize(5120) // Limit 5MB
+                                    ->helperText('Format PDF atau Gambar. Maksimal 5MB.')
+                                    ->required(fn($get, $context) => $get('status') === 'at_notary' && $context === 'create')
+                                    ->helperText('Wajib lampirkan scan tanda terima.')
+                                    ->disabled(fn($context) => $context === 'edit')
+                                    // Membuat box upload memenuhi tinggi kolom sebelah kiri agar simetris
+                                    ->extraAttributes(['class' => 'h-full']),
+                            ])->columnSpan(1),
+
+                            // Tambahan Info Jika di mode Edit agar user tidak bingung kenapa disabled
+                            Forms\Components\Placeholder::make('edit_info')
+                                ->label('')
+                                ->content('Informasi Notaris hanya dapat diubah melalui tombol Mutasi/Action.')
+                                ->visible(fn($context) => $context === 'edit')
+                                ->columnSpanFull(),
+                        ]),
                     ]),
 
                 Forms\Components\Section::make('Metadata Tambahan')
                     ->collapsed(false)
                     ->schema([
                         Forms\Components\KeyValue::make('legal_metadata')
+                            ->disabled(fn($operation) => $operation === 'edit')
                             ->label('Detail Spesifik Dokumen')
                             ->keyLabel('Atribut (Contoh: Luas Tanah)')
                             ->valueLabel('Nilai (Contoh: 150m2)'),

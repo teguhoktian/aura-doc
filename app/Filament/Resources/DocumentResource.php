@@ -345,6 +345,20 @@ class DocumentResource extends Resource
                         ->visible(fn($record) => $record->status === 'borrowed')
                         ->url(fn($record) => DocumentResource::getUrl('return-borrow', ['record' => $record])),
 
+                    Tables\Actions\Action::make('send_notary')
+                        ->label('Kirim ke Notaris')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('info')
+                        ->visible(fn($record) => $record->status === 'in_vault')
+                        ->url(fn($record) => DocumentResource::getUrl('notary-send', ['record' => $record])),
+
+                    Tables\Actions\Action::make('return_notary')
+                        ->label('Terima dari Notaris')
+                        ->icon('heroicon-o-hand-raised')
+                        ->color('success')
+                        ->visible(fn($record) => $record->status === 'at_notary')
+                        ->url(fn($record) => DocumentResource::getUrl('return-notary', ['record' => $record])),
+
                 ])
             ]);
     }
@@ -365,6 +379,8 @@ class DocumentResource extends Resource
 
             'borrow' => Pages\BorrowDocument::route('/{record}/borrow'),
             'return-borrow' => Pages\ReturnBorrowDocument::route('/{record}/return-borrow'),
+            'notary-send' => Pages\SendToNotaryDocument::route('/{record}/notary-send'),
+            'return-notary' => Pages\ReturnFromNotaryDocument::route('/{record}/return-notary'),
         ];
     }
 }
